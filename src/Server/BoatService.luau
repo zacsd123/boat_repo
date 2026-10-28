@@ -7,6 +7,9 @@ local TweenService = game:GetService("TweenService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local BoatRules = require(ReplicatedStorage.Shared.Rules.BoatRules)
+local DevTools = require(script.Parent.DevTools)
+
+local random = Random.new()
 
 local BoatService = {}
 
@@ -133,10 +136,20 @@ function BoatService.deckWeight(): number
 	return total
 end
 
--- Loading에 들어갈 때. P로 범위를 정하고 무게와 젖은 자국을 0으로
+-- 숨은 한계: lo 이상 hi 이하의 정수 하나를 고르게(BT-1)
+function BoatService.drawLimit(lo: number, hi: number): number
+	return random:NextInteger(lo, hi)
+end
+
+-- Loading에 들어갈 때. P로 범위를 정하고 숨은 한계를 뽑고, 무게와 젖은 자국을 0으로.
+-- 한계는 이 모듈의 지역 변수(round)에만 있다. 속성, 값 객체, 원격 이벤트에 두지 않는다
 function BoatService.startRound(p: number)
 	local lo, hi = Config.limitRange(p)
-	round = BoatRules.newBoat(lo, hi, hi) -- 숨은 한계는 S09에서 뽑는다
+	local limit = DevTools.forcedLimit() or BoatService.drawLimit(lo, hi)
+	if DevTools.shouldPrintLimit() then
+		print(`숨은 한계 {limit} (범위 {lo}~{hi}, P={p})`)
+	end
+	round = BoatRules.newBoat(lo, hi, limit)
 	boatModel:SetAttribute("RangeLo", lo)
 	boatModel:SetAttribute("RangeHi", hi)
 	drawBand(lo, hi)
@@ -193,6 +206,13 @@ end
 function BoatService.sailOut(duration: number)
 	setDocked(false)
 	moveRoot(away, duration)
+end
+
+-- 침몰 연출: 배다리를 떼고 선체 전체가 수면 아래로 내려간다. 판정과 따로 돈다
+function BoatService.sink(duration: number)
+	setDocked(false)
+	local hull = boatModel:FindFirstChild("Hull") :: BasePart
+	moveRoot(berth * CFrame.new(0, -(Config.HULL_FREEBOARD + hull.Size.Y), 0), duration)
 end
 
 -- 점이 갑판 구역 안인지(GP-11)

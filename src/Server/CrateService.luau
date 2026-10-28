@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Types = require(ReplicatedStorage.Shared.Types)
 local InputRules = require(ReplicatedStorage.Shared.Rules.InputRules)
+local BoatRules = require(ReplicatedStorage.Shared.Rules.BoatRules)
 local ParticipantService = require(script.Parent.ParticipantService)
 local RoundService = require(script.Parent.RoundService)
 local BoatService = require(script.Parent.BoatService)
@@ -173,7 +174,11 @@ local function placeOnDeck(player: Player, rootPart: BasePart)
 	end
 	dropCarried(player)
 	addCrate(kind, slot, rootPart.Position)
-	BoatService.onPlaced()
+	-- 무게를 다시 더한 바로 다음 줄에서 판정한다(BT-6). 가라앉힌 사람은 이 상자를 놓은 참가자다
+	local result = BoatService.onPlaced()
+	if result and result.sank then
+		RoundService.sink(slot, player.Name)
+	end
 end
 
 -- 실린 상자 하나를 갑판에서 뺀다. 무게를 다시 더한다
@@ -186,9 +191,17 @@ function CrateService.removeCrate(model: Instance)
 end
 
 -- 시험용(주인 없는) 상자를 싣는다. 판정도 실제 놓기와 같이 지난다
-function CrateService.addTestCrate(kind: string)
+function CrateService.addTestCrate(kind: string): BoatRules.PlaceResult?
+	-- 실제 놓기와 같이, 싣는 단계가 아니면 없던 일
+	if RoundService.getPhase() ~= Phase.Loading then
+		return nil
+	end
 	addCrate(kind, nil, root.Position)
-	return BoatService.onPlaced()
+	local result = BoatService.onPlaced()
+	if result and result.sank then
+		RoundService.sink(nil, nil)
+	end
+	return result
 end
 
 function CrateService.cargoCrates(): { Instance }

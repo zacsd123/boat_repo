@@ -27,6 +27,7 @@ local phaseEnteredAt = 0 -- 실제로 단계에 들어간 서버 시각. 길이 
 local boatIndex = 0
 local bells: BellRules.Bells? = nil
 local listeners: { (newPhase: string?, oldPhase: string?) -> () } = {}
+local sinkerSlot: number? = nil -- 이번 배를 가라앉힌 참가자(S11에서 점수에 쓴다)
 
 -- 시간으로 끝나는 단계의 길이와 다음 단계
 local DURATION: { [string]: number } = {
@@ -73,6 +74,7 @@ end
 
 local function onEnter(newPhase: string)
 	if newPhase == Phase.Arriving then
+		sinkerSlot = nil
 		boatIndex += 1
 		boat:SetAttribute("BoatIndex", boatIndex)
 		boat:SetAttribute("BellCount", 0)
@@ -89,6 +91,8 @@ local function onEnter(newPhase: string)
 	elseif newPhase == Phase.Departing then
 		landDeckPeople()
 		BoatService.sailOut(Config.SETTLE_SHOW_TIME)
+	elseif newPhase == Phase.Sinking then
+		BoatService.sink(Config.SETTLE_SHOW_TIME)
 	end
 end
 
@@ -121,6 +125,24 @@ end
 
 function RoundService.getPhase(): string?
 	return phase
+end
+
+-- 침몰(BT-6, BT-8). 놓기 처리에서 "침몰"이 돌아온 그 자리에서 부른다. 상태만 바꾸고 바로 끝난다.
+-- placerSlot은 그 상자를 놓은 참가자의 슬롯(시험용 상자면 nil)
+function RoundService.sink(placerSlot: number?, placerName: string?)
+	if phase ~= Phase.Loading then
+		return
+	end
+	sinkerSlot = placerSlot
+	print(`침몰. 가라앉힌 사람: {placerName or "없음(시험용 상자)"} (슬롯 {tostring(placerSlot)})`)
+	bells = nil -- 남은 종의 시각을 버린다
+	RoundService.setPhase(Phase.Sinking)
+	fx:FireAllClients("Sink", placerSlot)
+end
+
+-- 이번 배를 가라앉힌 참가자의 슬롯. 가라앉지 않았으면 nil
+function RoundService.getSinker(): number?
+	return sinkerSlot
 end
 
 local function step()

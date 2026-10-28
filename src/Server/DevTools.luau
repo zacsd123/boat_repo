@@ -111,9 +111,38 @@ function DevTools.setWeight(target: number): number
 	end
 	while BoatService.deckWeight() < target do
 		local gap = target - BoatService.deckWeight()
-		CrateService.addTestCrate(if gap >= Config.CRATE_SCORE.Large then "Large" else "Small")
+		local result = CrateService.addTestCrate(if gap >= Config.CRATE_SCORE.Large then "Large" else "Small")
+		-- 싣는 단계가 아니거나 가라앉았으면 멈춘다
+		if result == nil or result.sank then
+			break
+		end
 	end
 	return BoatService.deckWeight()
+end
+
+-- 숨은 한계를 n번(기본 1,000번) 뽑아 분포를 찍는다. 실제 라운드와 같은 함수로 뽑는다
+function DevTools.limitDistribution(p: number, n: number?): string
+	if not RunService:IsStudio() then return "" end
+	local Config = require(game:GetService("ReplicatedStorage").Shared.Config) :: any
+	local BoatService = require(script.Parent.BoatService) :: any
+	local lo, hi = Config.limitRange(p)
+	local count = n or 1000
+	local sum, low, high, nonInteger = 0, math.huge, -math.huge, 0
+	local seen: { [number]: number } = {}
+	for _ = 1, count do
+		local limit = BoatService.drawLimit(lo, hi)
+		sum += limit
+		low = math.min(low, limit)
+		high = math.max(high, limit)
+		seen[limit] = (seen[limit] or 0) + 1
+		if limit ~= math.floor(limit) then
+			nonInteger += 1
+		end
+	end
+	local summary = `한계 {count}번 (P={p}, 범위 {lo}~{hi}): 최소 {low}, 최대 {high}, 평균 {string.format("%.2f", sum / count)}, `
+		.. `{lo} 나옴 {seen[lo] or 0}번, {hi} 나옴 {seen[hi] or 0}번, 정수 아님 {nonInteger}번`
+	print(summary)
+	return summary
 end
 
 -- 실린 상자 하나(가장 나중에 실린 것)를 지운다
