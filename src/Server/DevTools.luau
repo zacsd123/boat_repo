@@ -3,6 +3,7 @@
 -- 시험용 값은 Config에 두지 않는다(docs/02-config.md의 "시험용 값").
 -- 이 단계(S02)에서는 값 다섯의 자리만 둔다. 쓰는 것은 S03, S06, S09, S10이다.
 
+local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 -- 시험할 때 여기 값을 바꾼다. nil은 "없음"이다
@@ -37,6 +38,42 @@ end
 function DevTools.shouldRunTests(): boolean
 	if not RunService:IsStudio() then return false end
 	return DEBUG_RUN_TESTS
+end
+
+-- 점이 구역 상자 안에 있는지
+local function inside(zone: BasePart, point: Vector3): boolean
+	local localPoint = zone.CFrame:PointToObjectSpace(point)
+	local half = zone.Size / 2
+	return math.abs(localPoint.X) <= half.X and math.abs(localPoint.Y) <= half.Y and math.abs(localPoint.Z) <= half.Z
+end
+
+-- 초시계. 캐릭터가 구역 A를 떠난 순간부터 구역 B에 들어간 순간까지를 서버 출력에 찍는다.
+-- 한 번 찍으면 끝난다. player를 안 주면 첫 번째 플레이어를 잰다. 서버 명령창에서 부른다:
+--   require(game.ServerScriptService.Server.DevTools).stopwatch(workspace.Map.Zones.PileLargeZone, workspace.Map.Zones.DeckZone)
+function DevTools.stopwatch(fromZone: BasePart, toZone: BasePart, player: Player?)
+	if not RunService:IsStudio() then return end
+	local who = player or Players:GetPlayers()[1]
+	if who == nil then
+		warn("초시계: 플레이어가 없다")
+		return
+	end
+
+	local leftAt: number? = nil
+	local connection: RBXScriptConnection
+	connection = RunService.Heartbeat:Connect(function()
+		local character = who.Character
+		local rootPart = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if rootPart == nil then return end
+		local position = rootPart.Position
+		if leftAt == nil then
+			if not inside(fromZone, position) then
+				leftAt = os.clock()
+			end
+		elseif inside(toZone, position) then
+			connection:Disconnect()
+			print(`초시계 {fromZone.Name} → {toZone.Name}: {string.format("%.2f", os.clock() - leftAt)}초`)
+		end
+	end)
 end
 
 return DevTools

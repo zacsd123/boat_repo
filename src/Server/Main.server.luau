@@ -17,6 +17,10 @@ end
 
 print("server up")
 
+-- 서비스를 켠다
+local BoatService = require(script.Parent.BoatService)
+BoatService.start()
+
 -- 1명부터 차례로 찍는다
 for p = 1, #Config.LIMIT_RANGE do
 	local lo, hi = Config.limitRange(p)
