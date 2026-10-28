@@ -132,16 +132,9 @@ local function chooseCell(from: Vector3): (number, number)
 	return bestCell, lowest + 1
 end
 
--- 갑판에서 놓기(CR-5). 칸에 실린 상자를 만들고 배의 Root에 붙인다
-local function placeOnDeck(player: Player, rootPart: BasePart): Model?
-	local kind = ParticipantService.carryingOf(player)
-	local slot = ParticipantService.slotOf(player)
-	if kind == nil or slot == nil then
-		return nil
-	end
-	dropCarried(player)
-
-	local cell, layer = chooseCell(rootPart.Position)
+-- 화물칸에 실린 상자를 만들고 배의 Root에 붙인다. near에서 가장 가까운 빈 칸. 주인이 없으면 시험용 상자
+local function addCrate(kind: string, slot: number?, near: Vector3): Model
+	local cell, layer = chooseCell(near)
 	local _, top = stackInfo()
 	local base: CFrame
 	local below = top[cell]
@@ -169,6 +162,37 @@ local function placeOnDeck(player: Player, rootPart: BasePart): Model?
 	weld.Parent = body
 	model.Parent = cargo
 	return model
+end
+
+-- 갑판에서 놓기(CR-5). 든 상자를 화물칸에 싣고, 배의 무게를 다시 더해 판정한다
+local function placeOnDeck(player: Player, rootPart: BasePart)
+	local kind = ParticipantService.carryingOf(player)
+	local slot = ParticipantService.slotOf(player)
+	if kind == nil or slot == nil then
+		return
+	end
+	dropCarried(player)
+	addCrate(kind, slot, rootPart.Position)
+	BoatService.onPlaced()
+end
+
+-- 실린 상자 하나를 갑판에서 뺀다. 무게를 다시 더한다
+function CrateService.removeCrate(model: Instance)
+	if model.Parent ~= cargo then
+		return
+	end
+	model:Destroy()
+	BoatService.onRemoved()
+end
+
+-- 시험용(주인 없는) 상자를 싣는다. 판정도 실제 놓기와 같이 지난다
+function CrateService.addTestCrate(kind: string)
+	addCrate(kind, nil, root.Position)
+	return BoatService.onPlaced()
+end
+
+function CrateService.cargoCrates(): { Instance }
+	return cargo:GetChildren()
 end
 
 -- 클라이언트가 보낸 대상이 더미 종류인지
@@ -247,6 +271,7 @@ local function dropAllCarried()
 	end
 end
 
+-- 화물칸을 비운다(배가 바뀔 때). 다음 라운드의 무게는 startRound가 0에서 시작한다
 function CrateService.clearDeck()
 	cargo:ClearAllChildren()
 end

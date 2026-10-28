@@ -85,6 +85,49 @@ function DevTools.fakeTap(target: any, player: Player?)
 	CrateService.handleTap(who, target)
 end
 
+local function newestFirst(crates: { Instance }): { Instance }
+	table.sort(crates, function(a, b)
+		return ((a:GetAttribute("CrateId") :: number?) or 0) > ((b:GetAttribute("CrateId") :: number?) or 0)
+	end)
+	return crates
+end
+
+-- 무게를 target으로 만든다. 시험용(주인 없는) 상자를 화물칸에 넣고 뺀다. 넣을 때는 실제 놓기와 같은 판정을 지난다
+function DevTools.setWeight(target: number): number
+	if not RunService:IsStudio() then return -1 end
+	local CrateService = require(script.Parent.CrateService) :: any
+	local BoatService = require(script.Parent.BoatService) :: any
+	local Config = require(game:GetService("ReplicatedStorage").Shared.Config) :: any
+	-- 넘치면 시험용 상자부터, 그래도 넘치면 아무 상자나 뺀다
+	for _, ownerless in { true, false } do
+		for _, crate in newestFirst(CrateService.cargoCrates()) do
+			if BoatService.deckWeight() <= target then
+				break
+			end
+			if not ownerless or crate:GetAttribute("OwnerSlot") == nil then
+				CrateService.removeCrate(crate)
+			end
+		end
+	end
+	while BoatService.deckWeight() < target do
+		local gap = target - BoatService.deckWeight()
+		CrateService.addTestCrate(if gap >= Config.CRATE_SCORE.Large then "Large" else "Small")
+	end
+	return BoatService.deckWeight()
+end
+
+-- 실린 상자 하나(가장 나중에 실린 것)를 지운다
+function DevTools.removeOne(): number
+	if not RunService:IsStudio() then return -1 end
+	local CrateService = require(script.Parent.CrateService) :: any
+	local BoatService = require(script.Parent.BoatService) :: any
+	local crates = newestFirst(CrateService.cargoCrates())
+	if crates[1] then
+		CrateService.removeCrate(crates[1])
+	end
+	return BoatService.deckWeight()
+end
+
 -- 명령창에서 DevTools를 부르는 입구. 명령창에서 require하면 게임과 다른 모듈 사본이 생겨서
 -- 게임이 쓰는 상태(참가자, 배, 상자)가 보이지 않는다. 그래서 게임 안에서 명령을 받아 실행한다:
 --   game.ServerStorage.DevCommand:Invoke("fakeTap", "Large")

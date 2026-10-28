@@ -78,6 +78,9 @@ local function onEnter(newPhase: string)
 		boat:SetAttribute("BellCount", 0)
 		BoatService.sailIn(Config.SETTLE_ARRIVE_TIME)
 	elseif newPhase == Phase.Loading then
+		-- P는 지금은 접속해 있는 사람 수(S13에서 제대로 센다). 시험할 때는 DEBUG_FORCE_P
+		local p = DevTools.forcedP() or math.max(#Players:GetPlayers(), 1)
+		BoatService.startRound(p)
 		local gap1, gap2 = nextGaps()
 		bells = BellRules.newBells(Config.FIRST_BELL_CAP[Types.ShipSize.Normal], gap1, gap2)
 		print(`배 {boatIndex} 종 간격 {string.format("%.2f", gap1)}, {string.format("%.2f", gap2)}`)
