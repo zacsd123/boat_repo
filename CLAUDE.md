@@ -43,4 +43,4 @@
 
 ## 시험
 
-S03부터는 Studio에서 서버를 켤 때 `Config.DEBUG_RUN_TESTS`가 켜져 있으면 규칙 시험이 돈다. 하나라도 실패하면 그 단계는 끝난 것이 아니다.
+S03부터는 Studio에서 서버를 켤 때 `DevTools`의 `DEBUG_RUN_TESTS`가 켜져 있으면 규칙 시험이 돈다. 하나라도 실패하면 그 단계는 끝난 것이 아니다.
