@@ -1,3 +1,16 @@
 --!strict
--- 자리만 있음. 해당 단계에서 만든다(docs/03-architecture.md).
-return {}
+-- 소리와 연출. 서버가 보내는 Fx를 받는다. 소리와 연출은 S14와 S30에서 붙인다.
+-- 지금은 받은 것을 출력에 찍기만 한다.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local FxController = {}
+
+function FxController.start()
+	local fx = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Fx") :: RemoteEvent
+	fx.OnClientEvent:Connect(function(name: string)
+		print(`Fx {name}`)
+	end)
+end
+
+return FxController
