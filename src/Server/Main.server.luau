@@ -18,7 +18,9 @@ end
 print("server up")
 
 -- 서비스를 켠다
+local ParticipantService = require(script.Parent.ParticipantService)
 local BoatService = require(script.Parent.BoatService)
+ParticipantService.start()
 BoatService.start()
 
 -- 1명부터 차례로 찍는다
