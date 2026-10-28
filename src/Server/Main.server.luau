@@ -21,9 +21,12 @@ print("server up")
 local ParticipantService = require(script.Parent.ParticipantService)
 local BoatService = require(script.Parent.BoatService)
 local RoundService = require(script.Parent.RoundService)
+local CrateService = require(script.Parent.CrateService)
 ParticipantService.start()
 BoatService.start()
 RoundService.start()
+CrateService.start()
+DevTools.listen()
 
 -- 1명부터 차례로 찍는다
 for p = 1, #Config.LIMIT_RANGE do

@@ -49,7 +49,7 @@ end
 
 -- 초시계. 캐릭터가 구역 A를 떠난 순간부터 구역 B에 들어간 순간까지를 서버 출력에 찍는다.
 -- 한 번 찍으면 끝난다. player를 안 주면 첫 번째 플레이어를 잰다. 서버 명령창에서 부른다:
---   require(game.ServerScriptService.Server.DevTools).stopwatch(workspace.Map.Zones.PileLargeZone, workspace.Map.Zones.DeckZone)
+--   game.ServerStorage.DevCommand:Invoke("stopwatch", workspace.Map.Zones.PileLargeZone, workspace.Map.Zones.DeckZone)
 function DevTools.stopwatch(fromZone: BasePart, toZone: BasePart, player: Player?)
 	if not RunService:IsStudio() then return end
 	local who = player or Players:GetPlayers()[1]
@@ -74,6 +74,32 @@ function DevTools.stopwatch(fromZone: BasePart, toZone: BasePart, player: Player
 			print(`초시계 {fromZone.Name} → {toZone.Name}: {string.format("%.2f", os.clock() - leftAt)}초`)
 		end
 	end)
+end
+
+-- 플레이어 대신 Tap을 보낸다. 서버의 확인을 그대로 지나므로, 멀리 있는 더미를 대상으로 하면 버린 이유가 찍힌다.
+function DevTools.fakeTap(target: any, player: Player?)
+	if not RunService:IsStudio() then return end
+	local who = player or Players:GetPlayers()[1]
+	if who == nil then return end
+	local CrateService = require(script.Parent.CrateService) :: any
+	CrateService.handleTap(who, target)
+end
+
+-- 명령창에서 DevTools를 부르는 입구. 명령창에서 require하면 게임과 다른 모듈 사본이 생겨서
+-- 게임이 쓰는 상태(참가자, 배, 상자)가 보이지 않는다. 그래서 게임 안에서 명령을 받아 실행한다:
+--   game.ServerStorage.DevCommand:Invoke("fakeTap", "Large")
+function DevTools.listen()
+	if not RunService:IsStudio() then return end
+	local command = Instance.new("BindableFunction")
+	command.Name = "DevCommand"
+	command.OnInvoke = function(name: string, ...: any): any
+		local fn = (DevTools :: any)[name]
+		if type(fn) ~= "function" then
+			return `DevTools에 {name}이 없다`
+		end
+		return fn(...)
+	end
+	command.Parent = game:GetService("ServerStorage")
 end
 
 return DevTools

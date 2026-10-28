@@ -27,5 +27,7 @@ end
 -- 컨트롤러를 켠다
 local FxController = require(script.Parent.FxController)
 local HudController = require(script.Parent.HudController)
+local InputController = require(script.Parent.InputController)
 FxController.start()
 HudController.start()
+InputController.start()

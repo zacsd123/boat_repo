@@ -17,6 +17,7 @@ local ParticipantService = {}
 
 local slotOfPlayer: { [Player]: number } = {}
 local playerInSlot: { [number]: Player? } = {}
+local recordOf: { [Player]: Folder? } = {}
 
 local spawnSlots: Instance -- Map.Beach.SpawnSlots
 local seaFloor: BasePart -- Map.Sea.Floor
@@ -75,7 +76,8 @@ local function setUpCharacter(player: Player, character: Model)
 	humanoid.UseJumpPower = true
 	humanoid.JumpPower = 0
 	humanoid.AutoJumpEnabled = false
-	humanoid.WalkSpeed = Config.WALK_SPEED
+	-- 새 캐릭터는 빈손이다(든 상자는 옛 캐릭터와 함께 사라졌다)
+	ParticipantService.setState(player, Types.ParticipantState.Empty, nil)
 
 	local slot = slotOfPlayer[player]
 	if slot ~= nil then
@@ -101,7 +103,9 @@ local function onPlayerAdded(player: Player)
 	record:SetAttribute("UserId", player.UserId)
 	record:SetAttribute("Color", Config.PARTICIPANT_COLORS[slot])
 	record:SetAttribute("State", Types.ParticipantState.Empty)
+	record:SetAttribute("Carrying", "")
 	record.Parent = ReplicatedStorage:WaitForChild("Participants")
+	recordOf[player] = record
 
 	player.CharacterAdded:Connect(function(character)
 		setUpCharacter(player, character)
@@ -119,6 +123,7 @@ local function onPlayerRemoving(player: Player)
 	end
 	slotOfPlayer[player] = nil
 	playerInSlot[slot] = nil
+	recordOf[player] = nil
 	local record = ReplicatedStorage:WaitForChild("Participants"):FindFirstChild(tostring(slot))
 	if record then
 		record:Destroy()
@@ -145,6 +150,47 @@ end
 
 function ParticipantService.slotOf(player: Player): number?
 	return slotOfPlayer[player]
+end
+
+function ParticipantService.colorOf(slot: number): Color3
+	return Config.PARTICIPANT_COLORS[slot]
+end
+
+function ParticipantService.stateOf(player: Player): string?
+	local record = recordOf[player]
+	return record and record:GetAttribute("State") :: string?
+end
+
+function ParticipantService.carryingOf(player: Player): string?
+	local record = recordOf[player]
+	local carrying = record and record:GetAttribute("Carrying")
+	if carrying == "" then
+		return nil
+	end
+	return carrying :: string?
+end
+
+-- 상태와 든 상자를 바꾼다. 걷는 속도도 여기서 함께 바꾼다(빈손인데 느린 상태가 생기지 않게)
+function ParticipantService.setState(player: Player, state: string, carrying: string?)
+	local record = recordOf[player]
+	if record == nil then
+		return
+	end
+	record:SetAttribute("State", state)
+	record:SetAttribute("Carrying", carrying or "")
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.WalkSpeed = Config.carrySpeed(carrying or Types.ParticipantState.Empty)
+	end
+end
+
+function ParticipantService.players(): { Player }
+	local list = {}
+	for player in slotOfPlayer do
+		table.insert(list, player)
+	end
+	return list
 end
 
 function ParticipantService.start()

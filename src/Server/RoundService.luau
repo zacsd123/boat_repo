@@ -26,6 +26,7 @@ local phaseStartedAt = 0 -- 서버 시각. 다음 단계는 앞 단계가 끝나
 local phaseEnteredAt = 0 -- 실제로 단계에 들어간 서버 시각. 길이 확인용
 local boatIndex = 0
 local bells: BellRules.Bells? = nil
+local listeners: { (newPhase: string?, oldPhase: string?) -> () } = {}
 
 -- 시간으로 끝나는 단계의 길이와 다음 단계
 local DURATION: { [string]: number } = {
@@ -94,6 +95,7 @@ function RoundService.setPhase(newPhase: string?, startedAt: number?)
 	if phase ~= nil then
 		print(`단계 {phase} 끝: 정한 길이 {string.format("%.2f", t - phaseStartedAt)}초, 실제 {string.format("%.2f", now() - phaseEnteredAt)}초`)
 	end
+	local oldPhase = phase
 	phase = newPhase
 	phaseStartedAt = t
 	phaseEnteredAt = now()
@@ -101,9 +103,17 @@ function RoundService.setPhase(newPhase: string?, startedAt: number?)
 	if newPhase == nil then
 		bells = nil
 		BoatService.setAway()
-		return
+	else
+		onEnter(newPhase)
 	end
-	onEnter(newPhase)
+	for _, listener in listeners do
+		listener(newPhase, oldPhase)
+	end
+end
+
+-- 단계가 바뀔 때마다 부를 함수를 건다. 이 모듈이 다른 서비스를 require하지 않도록 거꾸로 알린다
+function RoundService.onPhaseChanged(listener: (newPhase: string?, oldPhase: string?) -> ())
+	table.insert(listeners, listener)
 end
 
 function RoundService.getPhase(): string?
