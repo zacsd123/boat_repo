@@ -3,9 +3,17 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Types = require(ReplicatedStorage.Shared.Types)
+local DevTools = require(script.Parent.DevTools)
 
 -- 수치가 서로 맞는지 먼저 본다. 어긋나면 여기서 오류로 멈춘다
 Config.validate()
+
+-- Studio에서만 규칙 시험을 돌린다. 하나라도 실패하면 여기서 오류로 멈춘다
+if DevTools.shouldRunTests() then
+	local Tests = require(script.Parent.Tests)
+	local ruleCount, exampleCount = Tests.run()
+	print(`규칙 시험 {ruleCount}개와 예시 {exampleCount}판 통과`)
+end
 
 print("server up")
 
