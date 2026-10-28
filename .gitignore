@@ -1,0 +1,13 @@
+# Roblox 플레이스 파일: 맵과 화면은 여기에 있고, Roblox에 게시한 판(버전 기록)이 백업이다
+*.rbxl
+*.rbxlx
+*.rbxl.lock
+*.rbxlx.lock
+
+# 운영체제와 편집기
+.DS_Store
+Thumbs.db
+*.swp
+
+# 파이썬 (docs/build.py)
+__pycache__/
