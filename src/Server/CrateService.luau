@@ -12,6 +12,7 @@ local BoatRules = require(ReplicatedStorage.Shared.Rules.BoatRules)
 local ParticipantService = require(script.Parent.ParticipantService)
 local RoundService = require(script.Parent.RoundService)
 local BoatService = require(script.Parent.BoatService)
+local BellService = require(script.Parent.BellService)
 
 local Phase = Types.Phase
 local State = Types.ParticipantState
@@ -176,6 +177,10 @@ local function placeOnDeck(player: Player, rootPart: BasePart)
 	addCrate(kind, slot, rootPart.Position)
 	-- 무게를 다시 더한 바로 다음 줄에서 판정한다(BT-6). 가라앉힌 사람은 이 상자를 놓은 참가자다
 	local result = BoatService.onPlaced()
+	-- 첫 종이 침몰보다 먼저다. 같은 상자에서 둘이 함께 날 수 있다(BL-5)
+	if result and result.touchedBand then
+		BellService.firstBell()
+	end
 	if result and result.sank then
 		RoundService.sink(slot, player.Name)
 	end
@@ -198,6 +203,9 @@ function CrateService.addTestCrate(kind: string): BoatRules.PlaceResult?
 	end
 	addCrate(kind, nil, root.Position)
 	local result = BoatService.onPlaced()
+	if result and result.touchedBand then
+		BellService.firstBell()
+	end
 	if result and result.sank then
 		RoundService.sink(nil, nil)
 	end

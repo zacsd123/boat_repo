@@ -157,6 +157,31 @@ function DevTools.removeOne(): number
 	return BoatService.deckWeight()
 end
 
+-- 종 간격을 n번(기본 100번) 실제와 같은 함수로 뽑아 "첫 종부터 출항까지"(간격 둘의 합)를 찍는다(S10).
+-- longerThan(기본 7.5초, 큰 상자 한 번 더 가져오는 시간)을 넘는 비율도 함께 찍는다
+function DevTools.bellSimulation(n: number?, longerThan: number?): string
+	if not RunService:IsStudio() then return "" end
+	local BellService = require(script.Parent.BellService) :: any
+	local Config = require(game:GetService("ReplicatedStorage").Shared.Config) :: any
+	local count = n or 100
+	local threshold = longerThan or (Config.CARRY_TIME.Large + Config.CARRY_TIME.Empty)
+	local sum, low, high, over = 0, math.huge, -math.huge, 0
+	for _ = 1, count do
+		local gap1, gap2 = BellService.drawGaps()
+		local span = gap1 + gap2
+		sum += span
+		low = math.min(low, span)
+		high = math.max(high, span)
+		if span > threshold then
+			over += 1
+		end
+	end
+	local summary = `종 {count}라운드: 첫 종부터 출항까지 최소 {string.format("%.2f", low)}, 최대 {string.format("%.2f", high)}, `
+		.. `평균 {string.format("%.2f", sum / count)}초, {string.format("%.1f", threshold)}초를 넘는 비율 {string.format("%.0f", over / count * 100)}%`
+	print(summary)
+	return summary
+end
+
 -- 명령창에서 DevTools를 부르는 입구. 명령창에서 require하면 게임과 다른 모듈 사본이 생겨서
 -- 게임이 쓰는 상태(참가자, 배, 상자)가 보이지 않는다. 그래서 게임 안에서 명령을 받아 실행한다:
 --   game.ServerStorage.DevCommand:Invoke("fakeTap", "Large")

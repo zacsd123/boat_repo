@@ -1,7 +1,7 @@
 --!strict
 -- 라운드 단계와 시간. 배를 들이고 내보낸다.
 -- 단계를 바꾸는 곳은 setPhase 하나다. 셋째 종, 침몰(S09), 사람이 다 나감이 모두 이 함수를 지난다.
--- 뽑은 종 간격과 다음 종 시각은 이 모듈의 지역 변수에만 둔다(숨은 값).
+-- 종(간격, 시각)은 BellService가 맡는다(S10).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -9,8 +9,8 @@ local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Types = require(ReplicatedStorage.Shared.Types)
-local BellRules = require(ReplicatedStorage.Shared.Rules.BellRules)
 local BoatService = require(script.Parent.BoatService)
+local BellService = require(script.Parent.BellService)
 local DevTools = require(script.Parent.DevTools)
 
 local Phase = Types.Phase
@@ -19,13 +19,11 @@ local RoundService = {}
 
 local boat: Model
 local fx: RemoteEvent
-local random = Random.new()
 
 local phase: string? = nil
 local phaseStartedAt = 0 -- 서버 시각. 다음 단계는 앞 단계가 끝나기로 한 시각에서 시작한다
 local phaseEnteredAt = 0 -- 실제로 단계에 들어간 서버 시각. 길이 확인용
 local boatIndex = 0
-local bells: BellRules.Bells? = nil
 local listeners: { (newPhase: string?, oldPhase: string?) -> () } = {}
 local sinkerSlot: number? = nil -- 이번 배를 가라앉힌 참가자(S11에서 점수에 쓴다)
 
@@ -45,16 +43,6 @@ local NEXT: { [string]: string } = {
 
 local function now(): number
 	return workspace:GetServerTimeNow()
-end
-
-local function nextGaps(): (number, number)
-	local forced = DevTools.forcedBellGaps()
-	if forced ~= nil then
-		return forced[1], forced[2]
-	end
-	return BellRules.drawGaps(Config.BELL_GAP_MIN, Config.BELL_GAP_MAX, function()
-		return random:NextNumber()
-	end)
 end
 
 -- 갑판 위 캐릭터를 선착장 머리로 내려 준다(GP-6)
@@ -83,10 +71,7 @@ local function onEnter(newPhase: string)
 		-- P는 지금은 접속해 있는 사람 수(S13에서 제대로 센다). 시험할 때는 DEBUG_FORCE_P
 		local p = DevTools.forcedP() or math.max(#Players:GetPlayers(), 1)
 		BoatService.startRound(p)
-		local gap1, gap2 = nextGaps()
-		bells = BellRules.newBells(Config.FIRST_BELL_CAP[Types.ShipSize.Normal], gap1, gap2)
-		print(`배 {boatIndex} 종 간격 {string.format("%.2f", gap1)}, {string.format("%.2f", gap2)}`)
-		boat:SetAttribute("BellCount", 0)
+		BellService.startRound(phaseStartedAt, `배 {boatIndex}`)
 		fx:FireAllClients("Horn")
 	elseif newPhase == Phase.Departing then
 		landDeckPeople()
@@ -108,7 +93,7 @@ function RoundService.setPhase(newPhase: string?, startedAt: number?)
 	phaseEnteredAt = now()
 	boat:SetAttribute("Phase", newPhase)
 	if newPhase == nil then
-		bells = nil
+		BellService.stop()
 		BoatService.setAway()
 	else
 		onEnter(newPhase)
@@ -135,7 +120,7 @@ function RoundService.sink(placerSlot: number?, placerName: string?)
 	end
 	sinkerSlot = placerSlot
 	print(`침몰. 가라앉힌 사람: {placerName or "없음(시험용 상자)"} (슬롯 {tostring(placerSlot)})`)
-	bells = nil -- 남은 종의 시각을 버린다
+	BellService.stop() -- 남은 종의 시각을 버린다
 	RoundService.setPhase(Phase.Sinking)
 	fx:FireAllClients("Sink", placerSlot)
 end
@@ -152,18 +137,10 @@ local function step()
 	local elapsed = now() - phaseStartedAt
 
 	if phase == Phase.Loading then
-		local current = bells
-		if current == nil then
-			return
-		end
-		BellRules.tick(current, elapsed)
-		if boat:GetAttribute("BellCount") ~= current.count then
-			boat:SetAttribute("BellCount", current.count)
-		end
-		-- 셋째 종이 울리는 순간 출항이다(BL-4)
-		local thirdAt = current.thirdAt
-		if thirdAt ~= nil and elapsed >= thirdAt then
-			RoundService.setPhase(Phase.Departing, phaseStartedAt + thirdAt)
+		-- 셋째 종이 울린 프레임에서 바로 출항이다(BL-4)
+		local departAt = BellService.tick()
+		if departAt ~= nil then
+			RoundService.setPhase(Phase.Departing, departAt)
 		end
 		return
 	end
