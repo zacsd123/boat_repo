@@ -190,6 +190,12 @@ function BoatService.startRound(p: number)
 	settleHeight()
 end
 
+-- 이번 라운드의 숨은 한계. 서버 안의 기록(Telemetry)에만 넘긴다. 속성이나 원격 이벤트에 싣지 않는다
+function BoatService.roundLimit(): number?
+	local current = round
+	return current and current.limit
+end
+
 -- 상자가 갑판에 놓인 직후. 다시 더한 무게로 BoatRules의 "놓였다"를 부르고 그 결과를 돌려준다
 function BoatService.onPlaced(): BoatRules.PlaceResult?
 	local current = round

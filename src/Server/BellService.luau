@@ -9,6 +9,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Types = require(ReplicatedStorage.Shared.Types)
 local BellRules = require(ReplicatedStorage.Shared.Rules.BellRules)
 local DevTools = require(script.Parent.DevTools)
+local Telemetry = require(script.Parent.Telemetry)
 
 local BellService = {}
 
@@ -58,6 +59,7 @@ function BellService.firstBell()
 	end
 	if BellRules.firstBell(current, now() - loadingStartedAt) then
 		ring(current.count)
+		Telemetry.firstBell("band")
 	end
 end
 
@@ -72,6 +74,9 @@ function BellService.tick(): number?
 	local rung = BellRules.tick(current, elapsed)
 	for _, number in rung do
 		ring(number)
+		if number == 1 then
+			Telemetry.firstBell("cap") -- tick에서 울린 첫 종은 상한 때문이다
+		end
 	end
 	-- 셋째 종이 울리는 순간 출항이다(BL-4). 종 수와 단계를 같은 프레임에서 바꾼다
 	local thirdAt = current.thirdAt
@@ -82,6 +87,15 @@ function BellService.tick(): number?
 		return loadingStartedAt + thirdAt
 	end
 	return nil
+end
+
+-- 이번 라운드의 종 간격. 서버 안의 기록(Telemetry)에만 넘긴다
+function BellService.currentGaps(): (number, number)
+	local current = bells
+	if current == nil then
+		return 0, 0
+	end
+	return current.gap1, current.gap2
 end
 
 -- 침몰하거나 라운드가 멈추면 남은 종의 시각을 버린다

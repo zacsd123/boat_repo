@@ -12,6 +12,7 @@ local ParticipantService = require(script.Parent.ParticipantService)
 local RoundService = require(script.Parent.RoundService)
 local BoatService = require(script.Parent.BoatService)
 local CrateService = require(script.Parent.CrateService)
+local Telemetry = require(script.Parent.Telemetry)
 
 local State = Types.ParticipantState
 local Phase = Types.Phase
@@ -60,6 +61,7 @@ local function enterWater(player: Player, at: Vector3)
 	end
 	ParticipantService.setState(player, State.InWater, nil)
 	fx:FireAllClients("Splash", at)
+	Telemetry.fellIn(player)
 end
 
 local function leaveWater(player: Player)

@@ -14,6 +14,7 @@ local RoundService = require(script.Parent.RoundService)
 local BoatService = require(script.Parent.BoatService)
 local BellService = require(script.Parent.BellService)
 local ScoreService = require(script.Parent.ScoreService)
+local Telemetry = require(script.Parent.Telemetry)
 
 local Phase = Types.Phase
 local State = Types.ParticipantState
@@ -84,6 +85,7 @@ local function pickUp(player: Player, kind: string, rootPart: BasePart)
 	model.Parent = player.Character
 	carried[player] = model
 	ParticipantService.setState(player, State.Carrying, kind)
+	Telemetry.pickedUp(player)
 end
 
 local function dropCarried(player: Player)
@@ -177,6 +179,7 @@ local function placeOnDeck(player: Player, rootPart: BasePart)
 	end
 	dropCarried(player)
 	local crate = addCrate(kind, slot, rootPart.Position)
+	Telemetry.placed(player, kind)
 	fx:FireAllClients("Place", (crate.PrimaryPart :: BasePart).Position)
 	ScoreService.recompute() -- 머리 위 숫자가 놓는 순간 오른다
 	-- 무게를 다시 더한 바로 다음 줄에서 판정한다(BT-6). 가라앉힌 사람은 이 상자를 놓은 참가자다

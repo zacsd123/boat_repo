@@ -13,6 +13,7 @@ local BoatService = require(script.Parent.BoatService)
 local BellService = require(script.Parent.BellService)
 local ScoreService = require(script.Parent.ScoreService)
 local ParticipantService = require(script.Parent.ParticipantService)
+local Telemetry = require(script.Parent.Telemetry)
 local DevTools = require(script.Parent.DevTools)
 
 local Phase = Types.Phase
@@ -77,14 +78,19 @@ local function onEnter(newPhase: string)
 		BoatService.startRound(p)
 		ScoreService.startRound()
 		BellService.startRound(phaseStartedAt, `배 {boatIndex}`)
+		local gap1, gap2 = BellService.currentGaps()
+		local lo, hi = Config.limitRange(p)
+		Telemetry.beginRound({ boat = boatIndex, p = p, lo = lo, hi = hi, limit = BoatService.roundLimit() or 0, gap1 = gap1, gap2 = gap2 })
 		fx:FireAllClients("Horn")
 	elseif newPhase == Phase.Departing then
 		-- 점수는 끝나는 순간 굳힌다(SC-1)
 		ScoreService.freeze(nil)
+		Telemetry.endRound("departed", nil, (boat:GetAttribute("Weight") :: number?) or 0, (boat:GetAttribute("MarkWeight") :: number?) or 0)
 		landDeckPeople()
 		BoatService.sailOut(Config.SETTLE_SHOW_TIME)
 	elseif newPhase == Phase.Sinking then
 		ScoreService.freeze(sinkerSlot) -- 가라앉힌 사람은 0(SC-2)
+		Telemetry.endRound("sank", sinkerSlot, (boat:GetAttribute("Weight") :: number?) or 0, (boat:GetAttribute("MarkWeight") :: number?) or 0)
 		BoatService.sink(Config.SETTLE_SHOW_TIME)
 	elseif newPhase == Phase.Scoring then
 		ScoreService.celebrate()

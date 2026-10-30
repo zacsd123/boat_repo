@@ -170,6 +170,51 @@ function HudController.start()
 	end
 
 	HudController.startHeads(boat)
+	HudController.startOwnerSummary(boat)
+end
+
+-- 게임 주인에게만 보이는 요약 창(S15). 서버가 주인에게만 OwnerSummary를 보낸다. 받은 적이 없으면 창을 만들지 않는다.
+-- 개발용이라 글자를 쓴다(다른 사람 화면에는 없다). S14에서 지운 단계, 배 번호, 종 수도 여기서 본다. 숨은 한계는 없다
+local OWNER_PANEL = "OwnerSummary"
+
+function HudController.startOwnerSummary(boat: Instance)
+	local remote = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("OwnerSummary") :: RemoteEvent
+	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+	local lines: { string }? = nil
+	local panel: TextLabel? = nil
+
+	local function refresh()
+		if lines == nil then
+			return
+		end
+		if panel == nil or panel.Parent == nil then
+			local gui = Instance.new("ScreenGui")
+			gui.Name = OWNER_PANEL
+			gui.ResetOnSpawn = false
+			local label = Instance.new("TextLabel")
+			label.Name = "Text"
+			label.AutomaticSize = Enum.AutomaticSize.XY
+			label.BackgroundTransparency = 0.4
+			label.BackgroundColor3 = Color3.new(0, 0, 0)
+			label.TextColor3 = Color3.new(1, 1, 1)
+			label.Font = Enum.Font.Code
+			label.TextSize = 14
+			label.TextXAlignment = Enum.TextXAlignment.Left
+			label.Parent = gui
+			gui.Parent = playerGui
+			panel = label
+		end
+		local live = `단계 {boat:GetAttribute("Phase") or "-"} · 배 {boat:GetAttribute("BoatIndex") or "-"} · 종 {boat:GetAttribute("BellCount") or "-"}`
+		;(panel :: TextLabel).Text = live .. "\n" .. table.concat(lines :: { string }, "\n")
+	end
+
+	remote.OnClientEvent:Connect(function(newLines: { string })
+		lines = newLines
+		refresh()
+	end)
+	for _, name in { "Phase", "BoatIndex", "BellCount" } do
+		boat:GetAttributeChangedSignal(name):Connect(refresh)
+	end
 end
 
 -- 머리 위 숫자(UI-3)와 선장 모자(SC-6). 참가자 기록의 BoatScore, Hat, Color만 보고 그린다.

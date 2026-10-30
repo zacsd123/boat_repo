@@ -200,6 +200,20 @@ function DevTools.leaveCleanup(player: Player?)
 	ParticipantService.cleanupFor(who)
 end
 
+-- 기록(S15)을 비운다. 테스트를 시작하기 직전에
+function DevTools.resetTelemetry()
+	if not RunService:IsStudio() then return end
+	local Telemetry = require(script.Parent.Telemetry) :: any
+	Telemetry.reset()
+end
+
+-- 지금까지의 요약(S15)
+function DevTools.telemetrySummary(): string
+	if not RunService:IsStudio() then return "" end
+	local Telemetry = require(script.Parent.Telemetry) :: any
+	return table.concat(Telemetry.summary(), " / ")
+end
+
 -- 명령창에서 DevTools를 부르는 입구. 명령창에서 require하면 게임과 다른 모듈 사본이 생겨서
 -- 게임이 쓰는 상태(참가자, 배, 상자)가 보이지 않는다. 그래서 게임 안에서 명령을 받아 실행한다:
 --   game.ServerStorage.DevCommand:Invoke("fakeTap", "Large")
