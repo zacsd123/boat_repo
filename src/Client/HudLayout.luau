@@ -10,6 +10,8 @@ local HudLayout = {
 	BAR_MAX_HEIGHT = 220, -- 수위 막대의 가장 큰 높이. 화면이 낮으면 이보다 짧아진다
 	BAR_MIN_HEIGHT = 80, -- 화면이 아주 낮아도 막대가 읽히는 가장 작은 높이
 	GAP = 16, -- 버튼 위 끝과 막대 아래 끝 사이
+	MINI_BELL_SIZE = 14, -- 수위 막대 옆 작은 종 하나의 지름(S14)
+	MINI_BELL_GAP = 6, -- 작은 종 사이, 그리고 작은 종과 막대 사이
 }
 
 return table.freeze(HudLayout)

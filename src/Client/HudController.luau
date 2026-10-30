@@ -1,7 +1,8 @@
 --!strict
 -- 화면 표시. 클라이언트는 배의 속성(Phase, BoatIndex, BellCount, Weight, MarkWeight, RangeLo, RangeHi)만 보고 그린다.
 -- 숨은 한계와 종까지 남은 시간은 받지도 보이지도 않는다.
--- - 개발용 단계 글자(S06). S14에서 지운다.
+-- - 개발용 단계 글자(S06)는 S14에서 지웠다. 화면에는 숫자와 그림만 있다(UI-5).
+-- - 수위 막대 옆 작은 종 셋(S14): 돛대가 화면 밖일 때도 종이 몇 번 울렸는지 보이게.
 -- - 수위 막대(S08, UI-1): 아래부터 안전 구간, 빨간 구간, 지금 수위, 최고 수위. 글자와 숫자 없음. 모양은 디자인 전 임시.
 
 local Players = game:GetService("Players")
@@ -10,8 +11,10 @@ local HudLayout = require(script.Parent.HudLayout)
 
 local HudController = {}
 
-local DEV_LABEL = "DevPhase"
 local WATER_BAR = "WaterBar"
+local MINI_BELLS = "MiniBells"
+local BELL_OFF_COLOR = Color3.fromRGB(70, 70, 70)
+local BELL_ON_COLOR = Color3.fromRGB(255, 210, 60)
 
 -- 수위 막대는 버튼 바로 위, 버튼과 같은 세로줄에 놓는다. 아래 끝은 버튼 위 끝에서 GAP만큼 띄우고,
 -- 위 끝은 화면 위에서 EDGE만큼 띄워 그 사이를 채운다. 화면이 낮을수록 막대가 짧아질 뿐이라
@@ -72,21 +75,54 @@ local function buildBar(hud: Instance): Frame
 	return bar
 end
 
+-- 수위 막대 위쪽 왼편에 작은 종 셋을 세로로. 울린 수만큼 켠다
+local function buildMiniBells(hud: Instance): Frame
+	local holder = Instance.new("Frame")
+	holder.Name = MINI_BELLS
+	holder.BackgroundTransparency = 1
+	holder.AnchorPoint = Vector2.new(1, 0)
+	local barLeft = HudLayout.EDGE + HudLayout.BUTTON_SIZE / 2 + HudLayout.BAR_WIDTH / 2
+	holder.Position = UDim2.new(1, -(barLeft + HudLayout.MINI_BELL_GAP), 0, HudLayout.EDGE)
+	holder.Size = UDim2.fromOffset(HudLayout.MINI_BELL_SIZE, HudLayout.MINI_BELL_SIZE * 3 + HudLayout.MINI_BELL_GAP * 2)
+	local list = Instance.new("UIListLayout")
+	list.Padding = UDim.new(0, HudLayout.MINI_BELL_GAP)
+	list.SortOrder = Enum.SortOrder.Name
+	list.Parent = holder
+	for index = 1, 3 do
+		local bell = Instance.new("Frame")
+		bell.Name = "Bell" .. index
+		bell.Size = UDim2.fromOffset(HudLayout.MINI_BELL_SIZE, HudLayout.MINI_BELL_SIZE)
+		bell.BackgroundColor3 = BELL_OFF_COLOR
+		bell.BorderSizePixel = 0
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0.5, 0)
+		corner.Parent = bell
+		bell.Parent = holder
+	end
+	holder.Parent = hud
+	return holder
+end
+
 function HudController.start()
 	local boat = workspace:WaitForChild("Map"):WaitForChild("Boat")
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 
-	local label: TextLabel? = nil
 	local bar: Frame? = nil
+	local miniBells: Frame? = nil
 
 	local function number(name: string): number
 		return (boat:GetAttribute(name) :: number?) or 0
 	end
 
 	local function refresh()
-		if label then
-			local phase = boat:GetAttribute("Phase")
-			label.Text = `단계 {phase or "-"} · 배 {boat:GetAttribute("BoatIndex") or "-"} · 종 {boat:GetAttribute("BellCount") or "-"}`
+		if miniBells then
+			local count = number("BellCount")
+			for _, bell in miniBells:GetChildren() do
+				if bell:IsA("Frame") then
+					local index = tonumber(string.match(bell.Name, "%d+")) or 0
+					bell.BackgroundColor3 = if index <= count then BELL_ON_COLOR else BELL_OFF_COLOR
+				end
+			end
 		end
 		if bar then
 			local hi = number("RangeHi")
@@ -116,20 +152,11 @@ function HudController.start()
 		if hud.Name ~= "Hud" then
 			return
 		end
-		if not hud:FindFirstChild(DEV_LABEL) then
-			local newLabel = Instance.new("TextLabel")
-			newLabel.Name = DEV_LABEL
-			newLabel.AutomaticSize = Enum.AutomaticSize.XY
-			newLabel.BackgroundTransparency = 0.4
-			newLabel.BackgroundColor3 = Color3.new(0, 0, 0)
-			newLabel.TextColor3 = Color3.new(1, 1, 1)
-			newLabel.Font = Enum.Font.Code
-			newLabel.TextSize = 18
-			newLabel.Parent = hud
-			label = newLabel
-		end
 		if not hud:FindFirstChild(WATER_BAR) then
 			bar = buildBar(hud)
+		end
+		if not hud:FindFirstChild(MINI_BELLS) then
+			miniBells = buildMiniBells(hud)
 		end
 		refresh()
 	end

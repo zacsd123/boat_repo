@@ -27,6 +27,7 @@ local crateAssets: Instance -- ServerStorage.Assets.Crates
 local pileSpots: { [string]: BasePart } = {}
 local cargo: Instance -- Map.Boat.Cargo. 실린 상자 모형이 모두 여기 있다
 local cargoHold: BasePart -- 칸 표시점(Cell1~)이 붙은 파트
+local fx: RemoteEvent
 local root: BasePart -- 배의 Root
 
 local lastTapAt: { [Player]: number } = {}
@@ -175,7 +176,8 @@ local function placeOnDeck(player: Player, rootPart: BasePart)
 		return
 	end
 	dropCarried(player)
-	addCrate(kind, slot, rootPart.Position)
+	local crate = addCrate(kind, slot, rootPart.Position)
+	fx:FireAllClients("Place", (crate.PrimaryPart :: BasePart).Position)
 	ScoreService.recompute() -- 머리 위 숫자가 놓는 순간 오른다
 	-- 무게를 다시 더한 바로 다음 줄에서 판정한다(BT-6). 가라앉힌 사람은 이 상자를 놓은 참가자다
 	local result = BoatService.onPlaced()
@@ -318,6 +320,7 @@ function CrateService.start()
 		pileSpots[kind] = beach:WaitForChild("Pile" .. kind) :: BasePart
 	end
 
+	fx = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Fx") :: RemoteEvent
 	local tap = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Tap") :: RemoteEvent
 	tap.OnServerEvent:Connect(CrateService.handleTap)
 

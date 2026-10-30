@@ -11,8 +11,18 @@ local FxController = {}
 local CREAK_SOUND = "rbxasset://sounds/action_footsteps_plastic.mp3"
 local CREAK_PITCH = 0.45 -- 발소리를 낮게 늘여 삐걱 소리 대신 쓴다(임시)
 local CREAK_MIN_VOLUME = 0.15 -- 띠에 막 닿았을 때도 들리는 크기
-local CREAK_MAX_VOLUME = 1
+local CREAK_MAX_VOLUME = 0.5 -- 종소리가 가장 잘 들리도록 삐걱 소리는 낮게(S14)
 local BELL_SOUND = "rbxasset://sounds/electronicpingshort.wav"
+local BELL_VOLUME = 1
+local PLACE_SOUND = "rbxasset://sounds/snap.mp3"
+local SINK_SOUND = "rbxasset://sounds/collide.wav"
+local SINK_PITCH = 0.5
+local ZERO_SOUND = "rbxasset://sounds/uuhhh.mp3"
+local COLUMN_HEIGHT = 30 -- 침몰 물기둥 높이(스터드). 임시 모양
+local COLUMN_WIDTH = 14
+local COLUMN_TIME = 0.8 -- 물기둥이 솟았다 사라지는 시간(초)
+local SHAKE_TIME = 0.6 -- 침몰 때 화면이 흔들리는 시간(초)
+local SHAKE_SIZE = 0.6 -- 흔들림 크기(스터드)
 local HORN_SOUND = "rbxasset://sounds/bass.wav"
 local HORN_PITCH = 0.5
 local FANFARE_SOUND = "rbxasset://sounds/victory.wav"
@@ -22,10 +32,11 @@ local SPLASH_SIZE = 6 -- 물보라가 퍼지는 지름(스터드). 임시 모양
 local SPLASH_TIME = 0.4 -- 물보라가 퍼지고 사라지는 시간(초). 임시 모양
 local BELL_ON_COLOR = Color3.fromRGB(255, 210, 60)
 
-local function oneShot(id: string, parent: Instance, pitch: number?)
+local function oneShot(id: string, parent: Instance, pitch: number?, volume: number?)
 	local sound = Instance.new("Sound")
 	sound.SoundId = id
 	sound.PlaybackSpeed = pitch or 1
+	sound.Volume = volume or sound.Volume
 	sound.Parent = parent
 	sound.Ended:Connect(function()
 		sound:Destroy()
@@ -61,6 +72,54 @@ local function splash(at: Vector3)
 	tween:Play()
 end
 
+-- 침몰 연출 1차(S14): 배 자리에서 물기둥이 솟고, 화면이 흔들리고, 침몰 소리와 0점 소리
+local function sinkShow(at: Vector3)
+	local column = Instance.new("Part")
+	column.Anchored = true
+	column.CanCollide = false
+	column.CanQuery = false
+	column.CanTouch = false
+	column.Shape = Enum.PartType.Cylinder
+	column.Color = SPLASH_COLOR
+	column.Material = Enum.Material.SmoothPlastic
+	column.Transparency = 0.15
+	column.Size = Vector3.new(1, COLUMN_WIDTH, COLUMN_WIDTH)
+	column.CFrame = CFrame.new(at.X, waterLevel, at.Z) * CFrame.Angles(0, 0, math.rad(90))
+	column.Parent = workspace
+	oneShot(SINK_SOUND, column, SINK_PITCH)
+	oneShot(ZERO_SOUND, workspace)
+	local tweens = game:GetService("TweenService")
+	local rise = tweens:Create(column, TweenInfo.new(COLUMN_TIME / 2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(COLUMN_HEIGHT, COLUMN_WIDTH, COLUMN_WIDTH),
+		CFrame = CFrame.new(at.X, waterLevel + COLUMN_HEIGHT / 2, at.Z) * CFrame.Angles(0, 0, math.rad(90)),
+	})
+	rise.Completed:Connect(function()
+		local fade = tweens:Create(column, TweenInfo.new(COLUMN_TIME / 2), { Transparency = 1 })
+		fade.Completed:Connect(function()
+			column:Destroy()
+		end)
+		fade:Play()
+	end)
+	rise:Play()
+
+	-- 화면 흔들림: 내 캐릭터의 카메라 위치를 잠깐 흔든다
+	local character = game:GetService("Players").LocalPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		local started = os.clock()
+		local connection: RBXScriptConnection
+		connection = game:GetService("RunService").RenderStepped:Connect(function()
+			if os.clock() - started >= SHAKE_TIME or humanoid.Parent == nil then
+				humanoid.CameraOffset = Vector3.zero
+				connection:Disconnect()
+				return
+			end
+			local size = SHAKE_SIZE * (1 - (os.clock() - started) / SHAKE_TIME)
+			humanoid.CameraOffset = Vector3.new((math.random() - 0.5) * size, (math.random() - 0.5) * size, 0)
+		end)
+	end
+end
+
 function FxController.start()
 	local boat = workspace:WaitForChild("Map"):WaitForChild("Boat")
 	local surface = workspace.Map:WaitForChild("Sea"):WaitForChild("Surface") :: BasePart
@@ -72,7 +131,11 @@ function FxController.start()
 	fx.OnClientEvent:Connect(function(name: string, ...)
 		print(`Fx {name}`, ...)
 		if name == "Bell" then
-			oneShot(BELL_SOUND, mast)
+			oneShot(BELL_SOUND, mast, nil, BELL_VOLUME)
+		elseif name == "Place" then
+			oneShot(PLACE_SOUND, hull)
+		elseif name == "Sink" then
+			sinkShow(hull.Position)
 		elseif name == "Horn" then
 			oneShot(HORN_SOUND, hull, HORN_PITCH)
 		elseif name == "Splash" then
