@@ -6,20 +6,31 @@
 
 local Players = game:GetService("Players")
 
+local HudLayout = require(script.Parent.HudLayout)
+
 local HudController = {}
 
 local DEV_LABEL = "DevPhase"
 local WATER_BAR = "WaterBar"
 
+-- 수위 막대는 버튼 바로 위, 버튼과 같은 세로줄에 놓는다. 아래 끝은 버튼 위 끝에서 GAP만큼 띄우고,
+-- 위 끝은 화면 위에서 EDGE만큼 띄워 그 사이를 채운다. 화면이 낮을수록 막대가 짧아질 뿐이라
+-- 어느 폰에서도 버튼과 겹치지 않는다(S11-1)
 local function buildBar(hud: Instance): Frame
 	local bar = Instance.new("Frame")
 	bar.Name = WATER_BAR
-	bar.AnchorPoint = Vector2.new(1, 0)
-	bar.Position = UDim2.new(1, -24, 0, 80)
-	bar.Size = UDim2.fromOffset(28, 220)
+	local fromBottom = HudLayout.EDGE + HudLayout.BUTTON_SIZE + HudLayout.GAP
+	bar.AnchorPoint = Vector2.new(0.5, 1)
+	bar.Position = UDim2.new(1, -(HudLayout.EDGE + HudLayout.BUTTON_SIZE / 2), 1, -fromBottom)
+	bar.Size = UDim2.new(0, HudLayout.BAR_WIDTH, 1, -(fromBottom + HudLayout.EDGE))
 	bar.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 	bar.BackgroundTransparency = 0.3
 	bar.BorderSizePixel = 0
+
+	local sizeLimit = Instance.new("UISizeConstraint")
+	sizeLimit.MinSize = Vector2.new(HudLayout.BAR_WIDTH, HudLayout.BAR_MIN_HEIGHT)
+	sizeLimit.MaxSize = Vector2.new(HudLayout.BAR_WIDTH, HudLayout.BAR_MAX_HEIGHT)
+	sizeLimit.Parent = bar
 
 	local safe = Instance.new("Frame")
 	safe.Name = "Safe"

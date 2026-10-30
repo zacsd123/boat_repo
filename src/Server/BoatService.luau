@@ -3,6 +3,7 @@
 -- 숨은 한계는 배 값(BoatRules.Boat) 안에만 있고, 그 값은 이 모듈 밖으로 나가지 않는다(S09).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
@@ -26,37 +27,69 @@ local wetMark: { BasePart } = {}
 local berth: CFrame -- 선착장 옆자리. 맵에 놓인 Root의 자리(빈 배)
 local away: CFrame -- 바다 쪽 대기 자리. Map.Sea.BoatAway
 local rootAboveWater = 0 -- 빈 배일 때 Root가 수면보다 높은 만큼
-local docked = false
+local docked = false -- 배가 선착장 옆자리에 있다. 무게를 따라 높이가 바뀌는 것은 이때뿐이다
+local gangwayShown = false -- 배다리가 보이고 밟힌다
+local retract = 0 -- 배다리가 걷힌 정도. 0은 다 펴짐, 1은 다 걷힘
+local retractFrom: Vector3? = nil -- 걷히기 시작할 때 갑판 입구가 있던 자리
+local retracting: RBXScriptConnection? = nil
 local moving: Tween? = nil
 
 local round: BoatRules.Boat? = nil -- 이번 라운드의 배. 숨은 한계가 들어 있다
 
--- 배다리의 윗면이 선착장 머리 끝과 갑판 입구를 잇도록 다시 놓는다
+-- 배다리의 윗면이 선착장 머리 끝과 갑판 입구를 잇도록 다시 놓는다.
+-- 걷히는 중에는 선착장 쪽 끝이 그대로이고, 배 쪽 끝이 선착장 쪽으로 다가온다
 local function fitGangway()
-	if not docked then
+	if not gangwayShown then
 		return
 	end
 	local a = dockEnd.WorldPosition
-	local b = entrance.WorldPosition
-	local mid = (a + b) / 2
-	gangway.Size = Vector3.new(gangway.Size.X, gangway.Size.Y, (b - a).Magnitude)
-	gangway.CFrame = CFrame.lookAt(mid, b) * CFrame.new(0, -gangway.Size.Y / 2, 0)
+	local b = retractFrom or entrance.WorldPosition
+	local tip = a:Lerp(b, 1 - retract)
+	local length = (tip - a).Magnitude
+	if length <= 0 then
+		return
+	end
+	gangway.Size = Vector3.new(gangway.Size.X, gangway.Size.Y, length)
+	gangway.CFrame = CFrame.lookAt((a + tip) / 2, tip) * CFrame.new(0, -gangway.Size.Y / 2, 0)
 end
 
--- 배가 선착장에 붙어 있을 때만 배다리가 보이고 밟힌다
-local function setDocked(value: boolean)
-	docked = value
+-- 걷히는 중이던 것을 멈추고 다 펴진 상태로 되돌린다
+local function stopRetract()
+	if retracting then
+		retracting:Disconnect()
+		retracting = nil
+	end
+	retractFrom = nil
+	retract = 0
+end
+
+local function showGangway(value: boolean)
+	gangwayShown = value
 	gangway.Transparency = if value then 0 else 1
 	gangway.CanCollide = value
 	fitGangway()
 end
 
+-- 배가 선착장에 붙어 있을 때만 배다리가 보이고 밟힌다
+local function setDocked(value: boolean)
+	docked = value
+	stopRetract()
+	showGangway(value)
+end
+
 -- Root를 target으로 옮긴다. 옮기는 중에 또 부르면 목표만 바꾸고 이어서 간다
-local function moveRoot(target: CFrame, duration: number, onDone: (() -> ())?)
+local function moveRoot(
+	target: CFrame,
+	duration: number,
+	onDone: (() -> ())?,
+	style: Enum.EasingStyle?,
+	direction: Enum.EasingDirection?
+)
 	if moving then
 		moving:Cancel()
 	end
-	local tween = TweenService:Create(root, TweenInfo.new(duration, Enum.EasingStyle.Linear), { CFrame = target })
+	local info = TweenInfo.new(duration, style or Enum.EasingStyle.Linear, direction or Enum.EasingDirection.Out)
+	local tween = TweenService:Create(root, info, { CFrame = target })
 	moving = tween
 	tween.Completed:Connect(function(state)
 		if state == Enum.PlaybackState.Completed and onDone then
@@ -202,10 +235,32 @@ function BoatService.sailIn(duration: number)
 	end)
 end
 
--- 배다리를 떼고 바다 쪽으로 나간다
+-- 셋째 종 뒤. 배다리가 먼저 천천히 걷히고, 다 걷히면 배가 바다 쪽으로 떠난다.
+-- 둘을 합쳐 duration(SETTLE_SHOW_TIME) 안에 끝난다. 보여 주기일 뿐 판정과 무관하다
+-- (단계는 셋째 종에서 이미 Departing이고, 그동안 놓기는 받지 않는다)
 function BoatService.sailOut(duration: number)
-	setDocked(false)
-	moveRoot(away, duration)
+	docked = false -- 무게를 따라 높이가 바뀌는 것은 여기까지
+	stopRetract()
+	-- 배다리는 선착장에 붙은 채 걷힌다. 배가 움직여도 끝이 배를 따라가 늘어나지 않는다
+	retractFrom = entrance.WorldPosition
+	local startedAt = os.clock()
+	retracting = RunService.Heartbeat:Connect(function()
+		local progress = math.min((os.clock() - startedAt) / Config.GANGWAY_RETRACT_TIME, 1)
+		if progress < 1 then
+			retract = TweenService:GetValue(progress, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+			fitGangway()
+			return
+		end
+		stopRetract()
+		showGangway(false)
+		moveRoot(
+			away,
+			duration - Config.GANGWAY_RETRACT_TIME,
+			nil,
+			Enum.EasingStyle.Sine,
+			Enum.EasingDirection.InOut
+		)
+	end)
 end
 
 -- 침몰 연출: 배다리를 떼고 선체 전체가 수면 아래로 내려간다. 판정과 따로 돈다

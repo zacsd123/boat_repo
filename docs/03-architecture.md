@@ -137,7 +137,7 @@ ServerStorage
 | --- | --- | --- | --- |
 | `MatchIntro` | `MATCH_START_TIME` | 총점 0. 첫 배가 들어온다 (S23부터) | 꺼짐 |
 | `Loading` | 종과 침몰이 정한다 | 뱃고동. 더미가 열린다. P를 세고 한계를 뽑는다 | 켜짐 |
-| `Departing` | `SETTLE_SHOW_TIME` | 셋째 종. 점수를 굳힌다. 갑판 위 사람을 선착장에 내려 준다 | 꺼짐 |
+| `Departing` | `SETTLE_SHOW_TIME` | 셋째 종. 점수를 굳힌다. 갑판 위 사람을 선착장에 내려 준다. 배다리가 `GANGWAY_RETRACT_TIME` 동안 걷히고, 다 걷히면 배가 떠난다(보여 주기일 뿐 단계는 이미 바뀌었다) | 꺼짐 |
 | `Sinking` | `SETTLE_SHOW_TIME` | 한계를 넘김. 점수를 굳히고 가라앉힌 사람을 0으로. 갑판 위 사람은 물에 | 꺼짐 |
 | `Scoring` | `SETTLE_SCORE_TIME` | 상자가 점수로 바뀌는 연출 | 꺼짐 |
 | `Arriving` | `SETTLE_ARRIVE_TIME` | 다음 배가 들어온다 | 꺼짐 |

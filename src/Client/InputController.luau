@@ -11,6 +11,7 @@ local RunService = game:GetService("RunService")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Types = require(ReplicatedStorage.Shared.Types)
 local InputRules = require(ReplicatedStorage.Shared.Rules.InputRules)
+local HudLayout = require(script.Parent.HudLayout)
 
 local State = Types.ParticipantState
 local Kind = Types.CrateKind
@@ -62,8 +63,8 @@ local function buildButton(hud: Instance): ImageButton
 	local button = Instance.new("ImageButton")
 	button.Name = BUTTON_NAME
 	button.AnchorPoint = Vector2.new(1, 1)
-	button.Position = UDim2.new(1, -24, 1, -24)
-	button.Size = UDim2.fromOffset(96, 96)
+	button.Position = UDim2.new(1, -HudLayout.EDGE, 1, -HudLayout.EDGE)
+	button.Size = UDim2.fromOffset(HudLayout.BUTTON_SIZE, HudLayout.BUTTON_SIZE)
 	button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 	button.AutoButtonColor = false
 	local corner = Instance.new("UICorner")

@@ -61,6 +61,7 @@ local Config = {
 	DECK_LENGTH = 24,
 	HULL_FREEBOARD = 6,
 	BOAT_MOVE_TIME = 0.3,
+	GANGWAY_RETRACT_TIME = 1.5,
 	CARGO_GRID = { columns = 6, rows = 3, cellSize = 3 },
 
 	-- 버튼, 끌어안기, 물
@@ -130,6 +131,10 @@ function Config.validate()
 
 	if Config.settleTime() ~= 12 then
 		table.insert(problems, `정산 세 부분의 합이 12가 아니다: {Config.settleTime()}`)
+	end
+	-- 배다리가 걷힌 뒤에 배가 떠나므로, 걷히는 시간은 출항 연출 안에서 배가 떠날 시간을 남겨야 한다
+	if Config.GANGWAY_RETRACT_TIME <= 0 or Config.GANGWAY_RETRACT_TIME >= Config.SETTLE_SHOW_TIME then
+		table.insert(problems, `GANGWAY_RETRACT_TIME은 0보다 크고 SETTLE_SHOW_TIME보다 작아야 한다: {Config.GANGWAY_RETRACT_TIME}, {Config.SETTLE_SHOW_TIME}`)
 	end
 	local finalTime = Config.FINAL_SHOW_TIME + Config.FINAL_LAST_SCORE_TIME + Config.FINAL_PODIUM_TIME
 	if finalTime ~= 20 then

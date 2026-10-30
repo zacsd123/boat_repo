@@ -42,7 +42,10 @@ group_order = list(dict.fromkeys(r.split("-")[0] for r in rules))
 def rule_sort(r):
     g, n = r.split("-"); return (group_order.index(g), int(n))
 
-stage_files = sorted(p.name for p in SRC.glob("S[0-9][0-9]-*.md"))
+# 단계 번호는 S11처럼 둘이거나, 단계 사이에 끼운 보충 단계 S11-1처럼 하나가 더 붙는다.
+# 파일 이름 차례로 늘어놓으면 S11-1이 S11 앞에 온다(숫자가 글자보다 앞이다)
+STAGE_FILE = re.compile(r"^(S\d\d(?:-\d)?)-[a-z]")
+stage_files = sorted(p.name for p in SRC.glob("S[0-9][0-9]-*.md") if STAGE_FILE.match(p.name))
 stages = []
 rule_to_stages = {r: [] for r in rules}
 key_to_stages = {k: [] for k in keys}
@@ -79,6 +82,8 @@ def check_refs(name, text):
         if k not in keys: errors.append(f"{name}: 본문에 없는 수치 키 {k}")
     for s in set(re.findall(r"(?<![A-Za-z0-9])S(\d\d)(?!\d)", plain)):
         if not any(f.startswith(f"S{s}-") for f in stage_files): errors.append(f"{name}: 없는 단계 S{s}")
+    for s, n in set(re.findall(r"(?<![A-Za-z0-9])S(\d\d)-(\d)(?!\d)", plain)):
+        if not any(f.startswith(f"S{s}-{n}-") for f in stage_files): errors.append(f"{name}: 없는 단계 S{s}-{n}")
     for f in set(re.findall(r"`((?:0\d|S\d\d)-[a-z0-9-]+\.md)`", plain)):
         if not (SRC / f).exists() and f != "04-traceability.md": errors.append(f"{name}: 없는 파일 {f}")
 
@@ -95,8 +100,8 @@ def escape_tildes(text):
 built = {}
 for f in stage_files:
     raw = unescape(read(f))
-    sid = f[:3]
-    title = re.search(r"^# (S\d\d)\. (.+)$", raw, flags=re.M)
+    sid = STAGE_FILE.match(f).group(1)
+    title = re.search(r"^# (S\d\d(?:-\d)?)\. (.+)$", raw, flags=re.M)
     if not title or title.group(1) != sid:
         errors.append(f"{f}: 첫 줄 제목이 '# {sid}. 이름' 꼴이 아니다"); continue
     fields = dict(re.findall(r"^- \*\*(.+?)\*\*: (.+)$", raw, flags=re.M))

@@ -61,6 +61,7 @@
 | `DECK_LENGTH` | 24 | 갑판의 긴 쪽 길이(스터드). 빈손 1.5초 거리다 | 지키는 사람이 한 번도 뚫리지 않아 판이 굳으면 키운다 |
 | `HULL_FREEBOARD` | 6 | 보통 배가 비었을 때 수면에서 갑판 턱까지의 높이(스터드) | 폰에서 빨간 띠가 안 읽히면 키운다 |
 | `BOAT_MOVE_TIME` | 0.3 | 무게가 바뀐 뒤 배가 새 높이로 옮겨 가는 시간(초). 보여 주기일 뿐 판정과 무관하다 | 배가 덜컥거려 보이면 늘린다 |
+| `GANGWAY_RETRACT_TIME` | 1.5 | 셋째 종이 울린 뒤 배다리가 선착장 쪽으로 걷히는 시간(초). 다 걷힌 뒤에 배가 떠나므로 배가 떠나는 시간은 `SETTLE_SHOW_TIME`에서 이 값을 뺀 만큼이다. 보여 주기일 뿐 판정과 무관하다 | 걷히는 것이 너무 빨리 지나가면 늘린다. `SETTLE_SHOW_TIME`보다 작아야 하고, 늘리면 배가 더 빨리 떠난다 |
 | `CARGO_GRID` | 6 × 3칸, 한 칸 3스터드 | 갑판 가운데 화물칸. 실린 상자가 놓이는 자리다 | 6명 이상에서 2층이 자주 생기면 칸을 늘린다 |
 
 계산으로 나오는 값은 다음과 같다. Config에 따로 적지 않고 함수로 계산한다.
@@ -141,7 +142,7 @@
 | --- | --- |
 | `BOATS_PER_MATCH` | S23, S26, S28 |
 | `MATCH_START_TIME` | S23, S24 |
-| `SETTLE_SHOW_TIME` | S06, S09, S11, S13, S20, S23, S30 |
+| `SETTLE_SHOW_TIME` | S06, S09, S11-1, S11, S13, S20, S23, S30 |
 | `SETTLE_SCORE_TIME` | S06, S11, S13, S23, S30 |
 | `SETTLE_ARRIVE_TIME` | S06, S11, S13, S23, S30 |
 | `FINAL_SHOW_TIME` | S23, S24, S30 |
@@ -160,6 +161,7 @@
 | `DECK_LENGTH` | S04, S19 |
 | `HULL_FREEBOARD` | S04, S08, S14, S28 |
 | `BOAT_MOVE_TIME` | S08, S30 |
+| `GANGWAY_RETRACT_TIME` | S11-1 |
 | `CARGO_GRID` | S04, S07, S29 |
 | `HOLD_TIME` | S03, S17, S18, S21, S27 |
 | `HOLD_TOLERANCE` | S03, S17, S31 |
