@@ -76,6 +76,7 @@ local Config = {
 	WATER_EXIT_TIME = 4.5,
 	WATER_SPEED = 9,
 	LADDER_CLIMB_TIME = 2.5,
+	WATER_THROW_TIME = 0.6,
 
 	-- 인원과 봇
 	SERVER_MAX_PLAYERS = 8,

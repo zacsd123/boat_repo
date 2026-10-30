@@ -286,6 +286,11 @@ function CrateService.handleTap(player: Player, target: any)
 	end
 end
 
+-- 손에 든 상자를 없애고 빈손으로(물에 들어가 놓친 상자, CR-9)
+function CrateService.dropCarried(player: Player)
+	dropCarried(player)
+end
+
 -- 손에 든 상자를 모두 없앤다(CR-11)
 local function dropAllCarried()
 	for _, player in ParticipantService.players() do

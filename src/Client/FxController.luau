@@ -16,6 +16,10 @@ local BELL_SOUND = "rbxasset://sounds/electronicpingshort.wav"
 local HORN_SOUND = "rbxasset://sounds/bass.wav"
 local HORN_PITCH = 0.5
 local FANFARE_SOUND = "rbxasset://sounds/victory.wav"
+local SPLASH_SOUND = "rbxasset://sounds/impact_water.mp3"
+local SPLASH_COLOR = Color3.fromRGB(220, 240, 255)
+local SPLASH_SIZE = 6 -- 물보라가 퍼지는 지름(스터드). 임시 모양
+local SPLASH_TIME = 0.4 -- 물보라가 퍼지고 사라지는 시간(초). 임시 모양
 local BELL_ON_COLOR = Color3.fromRGB(255, 210, 60)
 
 local function oneShot(id: string, parent: Instance, pitch: number?)
@@ -29,8 +33,38 @@ local function oneShot(id: string, parent: Instance, pitch: number?)
 	sound:Play()
 end
 
+-- 풍덩(S12): 수면에서 소리와 함께 하얀 원판이 퍼지며 사라진다(임시)
+local waterLevel = 0 -- 수면 높이. start에서 Map.Sea.Surface로 정한다
+local function splash(at: Vector3)
+	local anchor = Instance.new("Part")
+	anchor.Anchored = true
+	anchor.CanCollide = false
+	anchor.CanQuery = false
+	anchor.CanTouch = false
+	anchor.Shape = Enum.PartType.Cylinder
+	anchor.Color = SPLASH_COLOR
+	anchor.Material = Enum.Material.SmoothPlastic
+	anchor.Transparency = 0.2
+	anchor.Size = Vector3.new(0.2, 1, 1)
+	anchor.CFrame = CFrame.new(at.X, waterLevel, at.Z) * CFrame.Angles(0, 0, math.rad(90))
+	anchor.Parent = workspace
+	oneShot(SPLASH_SOUND, anchor)
+	local tween = game:GetService("TweenService"):Create(anchor, TweenInfo.new(SPLASH_TIME), {
+		Size = Vector3.new(0.2, SPLASH_SIZE, SPLASH_SIZE),
+		Transparency = 1,
+	})
+	tween.Completed:Connect(function()
+		task.delay(SPLASH_TIME, function()
+			anchor:Destroy()
+		end)
+	end)
+	tween:Play()
+end
+
 function FxController.start()
 	local boat = workspace:WaitForChild("Map"):WaitForChild("Boat")
+	local surface = workspace.Map:WaitForChild("Sea"):WaitForChild("Surface") :: BasePart
+	waterLevel = surface.Position.Y + surface.Size.Y / 2
 	local hull = boat:WaitForChild("Hull") :: BasePart
 	local mast = boat:WaitForChild("Mast")
 
@@ -41,6 +75,8 @@ function FxController.start()
 			oneShot(BELL_SOUND, mast)
 		elseif name == "Horn" then
 			oneShot(HORN_SOUND, hull, HORN_PITCH)
+		elseif name == "Splash" then
+			splash(... :: Vector3)
 		elseif name == "Fanfare" then
 			-- 이번 배 1등에게 팡파르(SC-8). 모두에게 들린다
 			oneShot(FANFARE_SOUND, workspace)

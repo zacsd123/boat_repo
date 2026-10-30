@@ -182,6 +182,15 @@ function DevTools.bellSimulation(n: number?, longerThan: number?): string
 	return summary
 end
 
+-- 첫 플레이어(또는 player)를 가까운 물 자리로 던져 넣는다(S12)
+function DevTools.throwIn(player: Player?)
+	if not RunService:IsStudio() then return end
+	local who = player or Players:GetPlayers()[1]
+	if who == nil then return end
+	local WaterService = require(script.Parent.WaterService) :: any
+	WaterService.throwIn(who)
+end
+
 -- 명령창에서 DevTools를 부르는 입구. 명령창에서 require하면 게임과 다른 모듈 사본이 생겨서
 -- 게임이 쓰는 상태(참가자, 배, 상자)가 보이지 않는다. 그래서 게임 안에서 명령을 받아 실행한다:
 --   game.ServerStorage.DevCommand:Invoke("fakeTap", "Large")

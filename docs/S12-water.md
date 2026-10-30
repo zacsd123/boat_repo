@@ -24,7 +24,7 @@
 
 ## 쓰는 수치
 
-<!--CONFIG: WATER_EXIT_TIME WATER_SPEED LADDER_CLIMB_TIME WALK_SPEED-->
+<!--CONFIG: WATER_EXIT_TIME WATER_SPEED LADDER_CLIMB_TIME WALK_SPEED WATER_THROW_TIME-->
 
 | 키 | 값 | 뜻 |
 | --- | --- | --- |
@@ -32,6 +32,7 @@
 | `WATER_SPEED` | 9 | 물속에서 걷는 속도(스터드/초). WATER_EXIT_TIME을 맞추는 손잡이다 |
 | `LADDER_CLIMB_TIME` | 2.5 | 사다리를 오르는 연출 시간(초). WATER_EXIT_TIME을 맞추는 손잡이다 |
 | `WALK_SPEED` | 16 | 빈손으로 걷는 속도(스터드/초). Roblox 기본값이다 |
+| `WATER_THROW_TIME` | 0.6 | 물에 던져 넣을 때 캐릭터가 물 자리까지 포물선을 그리며 날아가는 시간(초). 보여 주기일 뿐 판정과 무관하다. S12에서 정함 |
 
 <!--/CONFIG-->
 

@@ -188,7 +188,9 @@ function ParticipantService.setState(player: Player, state: string, carrying: st
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
-		humanoid.WalkSpeed = Config.carrySpeed(carrying or Types.ParticipantState.Empty)
+		humanoid.WalkSpeed = if state == Types.ParticipantState.InWater
+			then Config.WATER_SPEED
+			else Config.carrySpeed(carrying or Types.ParticipantState.Empty)
 	end
 end
 
