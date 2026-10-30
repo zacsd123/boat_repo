@@ -15,6 +15,7 @@ local CREAK_MAX_VOLUME = 1
 local BELL_SOUND = "rbxasset://sounds/electronicpingshort.wav"
 local HORN_SOUND = "rbxasset://sounds/bass.wav"
 local HORN_PITCH = 0.5
+local FANFARE_SOUND = "rbxasset://sounds/victory.wav"
 local BELL_ON_COLOR = Color3.fromRGB(255, 210, 60)
 
 local function oneShot(id: string, parent: Instance, pitch: number?)
@@ -40,6 +41,9 @@ function FxController.start()
 			oneShot(BELL_SOUND, mast)
 		elseif name == "Horn" then
 			oneShot(HORN_SOUND, hull, HORN_PITCH)
+		elseif name == "Fanfare" then
+			-- 이번 배 1등에게 팡파르(SC-8). 모두에게 들린다
+			oneShot(FANFARE_SOUND, workspace)
 		end
 	end)
 

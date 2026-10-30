@@ -141,6 +141,126 @@ function HudController.start()
 	for _, name in { "Phase", "BoatIndex", "BellCount", "Weight", "MarkWeight", "RangeLo", "RangeHi" } do
 		boat:GetAttributeChangedSignal(name):Connect(refresh)
 	end
+
+	HudController.startHeads(boat)
+end
+
+-- 머리 위 숫자(UI-3)와 선장 모자(SC-6). 참가자 기록의 BoatScore, Hat, Color만 보고 그린다.
+-- 침몰한 배의 정산 동안 가라앉힌 사람 머리 위에는 큰 0(UI-6). 모양은 디자인 전 임시
+local HEAD_SCORE = "HeadScore"
+local CAPTAIN_HAT = "CaptainHat"
+local SCORE_SIZE = UDim2.fromOffset(90, 44)
+local BIG_ZERO_SIZE = UDim2.fromOffset(170, 96)
+local HAT_COLOR = Color3.fromRGB(25, 25, 35)
+
+function HudController.startHeads(boat: Instance)
+	local participants = game:GetService("ReplicatedStorage"):WaitForChild("Participants")
+	local fx = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Fx") :: RemoteEvent
+	local sinkerSlot: number? = nil -- 이번 배를 가라앉힌 슬롯. 다음 배가 들어오면 지운다
+
+	local function playerOf(record: Instance): Player?
+		for _, player in Players:GetPlayers() do
+			if player.UserId == record:GetAttribute("UserId") then
+				return player
+			end
+		end
+		return nil
+	end
+
+	local function render(record: Instance)
+		local player = playerOf(record)
+		local character = player and player.Character
+		local head = character and character:FindFirstChild("Head") :: BasePart?
+		if head == nil then
+			return
+		end
+
+		local billboard = head:FindFirstChild(HEAD_SCORE) :: BillboardGui?
+		if billboard == nil then
+			local newBillboard = Instance.new("BillboardGui")
+			newBillboard.Name = HEAD_SCORE
+			newBillboard.Adornee = head
+			newBillboard.StudsOffset = Vector3.new(0, 2.6, 0)
+			newBillboard.AlwaysOnTop = true
+			local text = Instance.new("TextLabel")
+			text.Name = "Score"
+			text.Size = UDim2.fromScale(1, 1)
+			text.BackgroundTransparency = 1
+			text.Font = Enum.Font.GothamBlack
+			text.TextScaled = true
+			text.TextStrokeTransparency = 0
+			text.Parent = newBillboard
+			newBillboard.Parent = head
+			billboard = newBillboard
+		end
+		local label = (billboard :: BillboardGui):FindFirstChild("Score") :: TextLabel
+		local phase = boat:GetAttribute("Phase")
+		local isSinker = sinkerSlot ~= nil and tonumber(record.Name) == sinkerSlot
+			and (phase == "Sinking" or phase == "Scoring")
+		label.Text = tostring(record:GetAttribute("BoatScore") or 0)
+		label.TextColor3 = (record:GetAttribute("Color") :: Color3?) or Color3.new(1, 1, 1)
+		;(billboard :: BillboardGui).Size = if isSinker then BIG_ZERO_SIZE else SCORE_SIZE
+
+		local hat: Instance? = head:FindFirstChild(CAPTAIN_HAT)
+		if record:GetAttribute("Hat") == true and hat == nil then
+			local newHat = Instance.new("Part")
+			newHat.Name = CAPTAIN_HAT
+			newHat.Shape = Enum.PartType.Cylinder
+			newHat.Size = Vector3.new(0.5, 1.6, 1.6)
+			newHat.Color = HAT_COLOR
+			newHat.CanCollide = false
+			newHat.CanQuery = false
+			newHat.CanTouch = false
+			newHat.Massless = true
+			newHat.CFrame = head.CFrame * CFrame.new(0, head.Size.Y / 2 + newHat.Size.X / 2, 0) * CFrame.Angles(0, 0, math.rad(90))
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = head
+			weld.Part1 = newHat
+			weld.Parent = newHat
+			newHat.Parent = head
+		elseif record:GetAttribute("Hat") ~= true and hat then
+			hat:Destroy()
+		end
+	end
+
+	local function renderAll()
+		for _, record in participants:GetChildren() do
+			render(record)
+		end
+	end
+
+	local function watch(record: Instance)
+		for _, name in { "BoatScore", "Hat", "Color" } do
+			record:GetAttributeChangedSignal(name):Connect(function()
+				render(record)
+			end)
+		end
+		local player = playerOf(record)
+		if player then
+			player.CharacterAdded:Connect(function(character)
+				character:WaitForChild("Head")
+				render(record)
+			end)
+		end
+		render(record)
+	end
+	participants.ChildAdded:Connect(watch)
+	for _, record in participants:GetChildren() do
+		watch(record)
+	end
+
+	fx.OnClientEvent:Connect(function(name: string, slot: any)
+		if name == "Sink" then
+			sinkerSlot = slot
+			renderAll()
+		end
+	end)
+	boat:GetAttributeChangedSignal("Phase"):Connect(function()
+		if boat:GetAttribute("Phase") == "Arriving" then
+			sinkerSlot = nil
+		end
+		renderAll()
+	end)
 end
 
 return HudController

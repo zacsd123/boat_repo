@@ -104,6 +104,8 @@ local function onPlayerAdded(player: Player)
 	record:SetAttribute("Color", Config.PARTICIPANT_COLORS[slot])
 	record:SetAttribute("State", Types.ParticipantState.Empty)
 	record:SetAttribute("Carrying", "")
+	record:SetAttribute("BoatScore", 0)
+	record:SetAttribute("Hat", false)
 	record.Parent = ReplicatedStorage:WaitForChild("Participants")
 	recordOf[player] = record
 
@@ -150,6 +152,11 @@ end
 
 function ParticipantService.slotOf(player: Player): number?
 	return slotOfPlayer[player]
+end
+
+-- 참가자 기록 폴더(ReplicatedStorage.Participants.<슬롯>)
+function ParticipantService.recordOf(player: Player): Folder?
+	return recordOf[player]
 end
 
 function ParticipantService.colorOf(slot: number): Color3

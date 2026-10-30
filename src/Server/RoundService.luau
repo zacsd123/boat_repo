@@ -11,6 +11,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Types = require(ReplicatedStorage.Shared.Types)
 local BoatService = require(script.Parent.BoatService)
 local BellService = require(script.Parent.BellService)
+local ScoreService = require(script.Parent.ScoreService)
 local DevTools = require(script.Parent.DevTools)
 
 local Phase = Types.Phase
@@ -71,13 +72,19 @@ local function onEnter(newPhase: string)
 		-- P는 지금은 접속해 있는 사람 수(S13에서 제대로 센다). 시험할 때는 DEBUG_FORCE_P
 		local p = DevTools.forcedP() or math.max(#Players:GetPlayers(), 1)
 		BoatService.startRound(p)
+		ScoreService.startRound()
 		BellService.startRound(phaseStartedAt, `배 {boatIndex}`)
 		fx:FireAllClients("Horn")
 	elseif newPhase == Phase.Departing then
+		-- 점수는 끝나는 순간 굳힌다(SC-1)
+		ScoreService.freeze(nil)
 		landDeckPeople()
 		BoatService.sailOut(Config.SETTLE_SHOW_TIME)
 	elseif newPhase == Phase.Sinking then
+		ScoreService.freeze(sinkerSlot) -- 가라앉힌 사람은 0(SC-2)
 		BoatService.sink(Config.SETTLE_SHOW_TIME)
+	elseif newPhase == Phase.Scoring then
+		ScoreService.celebrate()
 	end
 end
 

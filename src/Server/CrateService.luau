@@ -13,6 +13,7 @@ local ParticipantService = require(script.Parent.ParticipantService)
 local RoundService = require(script.Parent.RoundService)
 local BoatService = require(script.Parent.BoatService)
 local BellService = require(script.Parent.BellService)
+local ScoreService = require(script.Parent.ScoreService)
 
 local Phase = Types.Phase
 local State = Types.ParticipantState
@@ -175,6 +176,7 @@ local function placeOnDeck(player: Player, rootPart: BasePart)
 	end
 	dropCarried(player)
 	addCrate(kind, slot, rootPart.Position)
+	ScoreService.recompute() -- 머리 위 숫자가 놓는 순간 오른다
 	-- 무게를 다시 더한 바로 다음 줄에서 판정한다(BT-6). 가라앉힌 사람은 이 상자를 놓은 참가자다
 	local result = BoatService.onPlaced()
 	-- 첫 종이 침몰보다 먼저다. 같은 상자에서 둘이 함께 날 수 있다(BL-5)
@@ -193,6 +195,7 @@ function CrateService.removeCrate(model: Instance)
 	end
 	model:Destroy()
 	BoatService.onRemoved()
+	ScoreService.recompute()
 end
 
 -- 시험용(주인 없는) 상자를 싣는다. 판정도 실제 놓기와 같이 지난다
