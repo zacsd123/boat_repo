@@ -12,6 +12,7 @@ local Types = require(ReplicatedStorage.Shared.Types)
 local BoatService = require(script.Parent.BoatService)
 local BellService = require(script.Parent.BellService)
 local ScoreService = require(script.Parent.ScoreService)
+local ParticipantService = require(script.Parent.ParticipantService)
 local DevTools = require(script.Parent.DevTools)
 
 local Phase = Types.Phase
@@ -69,8 +70,10 @@ local function onEnter(newPhase: string)
 		boat:SetAttribute("BellCount", 0)
 		BoatService.sailIn(Config.SETTLE_ARRIVE_TIME)
 	elseif newPhase == Phase.Loading then
-		-- P는 지금은 접속해 있는 사람 수(S13에서 제대로 센다). 시험할 때는 DEBUG_FORCE_P
-		local p = DevTools.forcedP() or math.max(#Players:GetPlayers(), 1)
+		-- P는 라운드가 시작되는 이 순간 한 번만 센다(JN-5). 라운드 도중에는 다시 세지 않는다.
+		-- 기록은 늘 새로 시작하고, 시험할 때만 DEBUG_FORCE_P로 바꾼다
+		local counted = ParticipantService.beginRound()
+		local p = DevTools.forcedP() or counted
 		BoatService.startRound(p)
 		ScoreService.startRound()
 		BellService.startRound(phaseStartedAt, `배 {boatIndex}`)
@@ -95,6 +98,9 @@ function RoundService.setPhase(newPhase: string?, startedAt: number?)
 		print(`단계 {phase} 끝: 정한 길이 {string.format("%.2f", t - phaseStartedAt)}초, 실제 {string.format("%.2f", now() - phaseEnteredAt)}초`)
 	end
 	local oldPhase = phase
+	if oldPhase == Phase.Loading then
+		ParticipantService.endRound()
+	end
 	phase = newPhase
 	phaseStartedAt = t
 	phaseEnteredAt = now()
@@ -144,6 +150,7 @@ local function step()
 	local elapsed = now() - phaseStartedAt
 
 	if phase == Phase.Loading then
+		ParticipantService.watchMovement()
 		-- 셋째 종이 울린 프레임에서 바로 출항이다(BL-4)
 		local departAt = BellService.tick()
 		if departAt ~= nil then

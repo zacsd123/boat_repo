@@ -191,6 +191,15 @@ function DevTools.throwIn(player: Player?)
 	WaterService.throwIn(who)
 end
 
+-- 첫 플레이어가 나갈 때의 뒷정리만 해 본다(그 사람의 상자를 치우고 무게와 점수를 다시 더함). 플레이어는 남는다(S13 시험)
+function DevTools.leaveCleanup(player: Player?)
+	if not RunService:IsStudio() then return end
+	local who = player or Players:GetPlayers()[1]
+	if who == nil then return end
+	local ParticipantService = require(script.Parent.ParticipantService) :: any
+	ParticipantService.cleanupFor(who)
+end
+
 -- 명령창에서 DevTools를 부르는 입구. 명령창에서 require하면 게임과 다른 모듈 사본이 생겨서
 -- 게임이 쓰는 상태(참가자, 배, 상자)가 보이지 않는다. 그래서 게임 안에서 명령을 받아 실행한다:
 --   game.ServerStorage.DevCommand:Invoke("fakeTap", "Large")

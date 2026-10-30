@@ -234,6 +234,7 @@ end
 
 -- Tap 하나를 처리한다. 클라이언트의 값은 믿지 않고 서버의 상태로 다시 본다
 function CrateService.handleTap(player: Player, target: any)
+	ParticipantService.markInput(player) -- 버튼을 보낸 것 자체가 입력이다(GP-10)
 	local now = os.clock()
 	local last = lastTapAt[player]
 	if last ~= nil and now - last < Config.INPUT_MIN_INTERVAL then
@@ -319,6 +320,29 @@ function CrateService.start()
 
 	local tap = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Tap") :: RemoteEvent
 	tap.OnServerEvent:Connect(CrateService.handleTap)
+
+	-- 사람이 나가면 든 상자와 갑판의 그 사람 상자를 모두 없애고, 무게와 점수를 다시 더한다(JN-2).
+	-- 젖은 자국과 이미 울린 종은 그대로다(BoatRules의 "빠졌다"는 무게만 고친다)
+	ParticipantService.onLeaving(function(player, slot)
+		local model = carried[player]
+		if model then
+			model:Destroy()
+		end
+		carried[player] = nil
+		lastTapAt[player] = nil
+		local removed = 0
+		for _, crate in cargo:GetChildren() do
+			if crate:GetAttribute("OwnerSlot") == slot then
+				crate:Destroy()
+				removed += 1
+			end
+		end
+		if removed > 0 then
+			BoatService.onRemoved()
+			ScoreService.recompute()
+		end
+		print(`나간 사람의 상자 {removed}개를 치움(슬롯 {slot})`)
+	end)
 
 	RoundService.onPhaseChanged(function(newPhase, oldPhase)
 		-- 라운드가 끝나는 순간 손에 든 상자는 사라진다

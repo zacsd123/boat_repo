@@ -9,6 +9,7 @@ local StarterPlayer = game:GetService("StarterPlayer")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Types = require(ReplicatedStorage.Shared.Types)
+local JoinRules = require(ReplicatedStorage.Shared.Rules.JoinRules)
 
 local CHARACTER_GROUP = "Characters"
 local CARGO_WALL_GROUP = "CargoWall"
@@ -18,6 +19,13 @@ local ParticipantService = {}
 local slotOfPlayer: { [Player]: number } = {}
 local playerInSlot: { [number]: Player? } = {}
 local recordOf: { [Player]: Folder? } = {}
+
+-- 입력이 있었는지(GP-10)와 들어온 때. 서버가 직접 잰다. 클라이언트에 묻지 않는다
+local joinedAt: { [Player]: number } = {} -- 들어온 서버 시각
+local roundStartedAt: number? = nil -- 지난(지금) 라운드가 시작된 서버 시각. 첫 라운드 전에는 nil
+local hadInput: { [Player]: boolean } = {} -- 이번 라운드에 입력이 있었는지
+local startPosition: { [Player]: Vector3? } = {} -- 이번 라운드가 시작될 때 캐릭터가 있던 자리
+local leavingListeners: { (player: Player, slot: number) -> () } = {}
 
 local spawnSlots: Instance -- Map.Beach.SpawnSlots
 local seaFloor: BasePart -- Map.Sea.Floor
@@ -95,6 +103,7 @@ local function onPlayerAdded(player: Player)
 	end
 	slotOfPlayer[player] = slot
 	playerInSlot[slot] = player
+	joinedAt[player] = workspace:GetServerTimeNow()
 	print(`참가자 들어옴: {player.Name} → 슬롯 {slot}`)
 
 	local record = Instance.new("Folder")
@@ -123,9 +132,14 @@ local function onPlayerRemoving(player: Player)
 	if slot == nil then
 		return
 	end
+	-- 기록을 지우기 전에 든 상자와 갑판의 상자를 먼저 치운다(JN-2). 순서가 바뀌면 주인 없는 상자가 남는다
+	ParticipantService.cleanupFor(player)
 	slotOfPlayer[player] = nil
 	playerInSlot[slot] = nil
 	recordOf[player] = nil
+	joinedAt[player] = nil
+	hadInput[player] = nil
+	startPosition[player] = nil
 	local record = ReplicatedStorage:WaitForChild("Participants"):FindFirstChild(tostring(slot))
 	if record then
 		record:Destroy()
@@ -148,6 +162,76 @@ local function watchFallen()
 			end
 		end
 	end)
+end
+
+-- 나가는 사람의 뒷정리(onLeaving에 건 함수들). 나가기 직전에 부른다. DevTools 시험에서도 쓴다
+function ParticipantService.cleanupFor(player: Player)
+	local slot = slotOfPlayer[player]
+	if slot == nil then
+		return
+	end
+	for _, listener in leavingListeners do
+		listener(player, slot)
+	end
+end
+
+-- 참가자가 나가기 직전(기록이 아직 있을 때) 부를 함수를 건다
+function ParticipantService.onLeaving(listener: (player: Player, slot: number) -> ())
+	table.insert(leavingListeners, listener)
+end
+
+local function rootPosition(player: Player): Vector3?
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	return root and root.Position
+end
+
+-- 버튼을 눌렀다(Tap). 입력이 있었던 것으로 적는다
+function ParticipantService.markInput(player: Player)
+	if startPosition[player] ~= nil then
+		hadInput[player] = true
+	end
+end
+
+-- Loading에 들어가는 순간. 지난 라운드의 기록으로 P를 세고(JN-4, JN-5), 이번 라운드의 기록을 새로 시작한다.
+-- 지난 라운드에 입력이 있었던 사람과 지난 라운드가 시작된 뒤에 들어온 사람을 센다. 서버의 첫 라운드는 전원
+function ParticipantService.beginRound(): number
+	local counted: { JoinRules.Counted } = {}
+	local idle = {}
+	for player in slotOfPlayer do
+		local justJoined = roundStartedAt == nil or (joinedAt[player] or 0) > (roundStartedAt :: number)
+		local input = hadInput[player] == true
+		table.insert(counted, { isBot = false, hadInput = input, justJoined = justJoined })
+		if not input and not justJoined then
+			table.insert(idle, player.Name)
+		end
+	end
+	local p = JoinRules.countP(counted)
+	print(`P={p} (참가자 {#counted}명{if #idle > 0 then `, 입력 없던 사람 {table.concat(idle, ", ")}` else ""})`)
+
+	roundStartedAt = workspace:GetServerTimeNow()
+	for player in slotOfPlayer do
+		hadInput[player] = false
+		startPosition[player] = rootPosition(player) or Vector3.zero
+	end
+	return p
+end
+
+-- Loading 동안 매 프레임: 시작 자리에서 IDLE_MOVE_THRESHOLD 넘게 움직였으면 입력이 있던 것(GP-10)
+function ParticipantService.watchMovement()
+	for player, start in startPosition do
+		if not hadInput[player] then
+			local position = rootPosition(player)
+			if position and start and (position - start).Magnitude > Config.IDLE_MOVE_THRESHOLD then
+				hadInput[player] = true
+			end
+		end
+	end
+end
+
+-- 라운드가 끝나면 움직임을 그만 잰다(기록은 다음 Loading의 P 세기에 쓴다)
+function ParticipantService.endRound()
+	table.clear(startPosition)
 end
 
 function ParticipantService.slotOf(player: Player): number?
