@@ -219,6 +219,15 @@ function BoatService.onRemoved()
 	settleHeight()
 end
 
+-- 셋째 종에 떠났다. 이 뒤에 온 놓기는 BoatRules가 "없던 일"로 돌려준다(BL-4).
+-- 단계 확인(Tap 처리 순서 1번)이 먼저 버리지만, 판정 모듈에도 끝난 배로 적어 둔다
+function BoatService.depart()
+	local current = round
+	if current ~= nil then
+		BoatRules.departed(current)
+	end
+end
+
 -- 바다 쪽 대기 자리로 바로 옮긴다
 function BoatService.setAway()
 	if moving then

@@ -284,6 +284,11 @@ end
 function Telemetry.start()
 	ownerSummary = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("OwnerSummary") :: RemoteEvent
 	print("TELEMETRY," .. table.concat(COLUMNS, ","))
+	-- 나간 사람의 표를 지운다(판이 오래 이어져도 남지 않게)
+	ParticipantService.onLeaving(function(player)
+		pickedAt[player] = nil
+		stillAnchor[player] = nil
+	end)
 	Players.PlayerAdded:Connect(function(player)
 		if Telemetry.isOwner(player) then
 			ownerSummary:FireClient(player, summaryText())

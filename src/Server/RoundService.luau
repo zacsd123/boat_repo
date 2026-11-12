@@ -83,6 +83,7 @@ local function onEnter(newPhase: string)
 		Telemetry.beginRound({ boat = boatIndex, p = p, lo = lo, hi = hi, limit = BoatService.roundLimit() or 0, gap1 = gap1, gap2 = gap2 })
 		fx:FireAllClients("Horn")
 	elseif newPhase == Phase.Departing then
+		BoatService.depart()
 		-- 점수는 끝나는 순간 굳힌다(SC-1)
 		ScoreService.freeze(nil)
 		Telemetry.endRound("departed", nil, (boat:GetAttribute("Weight") :: number?) or 0, (boat:GetAttribute("MarkWeight") :: number?) or 0)

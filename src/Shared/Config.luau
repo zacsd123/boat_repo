@@ -95,12 +95,14 @@ local Config = {
 
 -- 한계 범위의 아래 끝과 위 끝. P는 표의 양 끝으로 자른다. 배 크기는 S28부터 넘긴다
 function Config.limitRange(p: number, shipSize: string?): (number, number)
-	local row = Config.LIMIT_RANGE[math.clamp(p, 1, #Config.LIMIT_RANGE)]
+	local people = math.clamp(p, 1, #Config.LIMIT_RANGE)
+	local row = Config.LIMIT_RANGE[people]
+	-- 옮기는 양도 자른 인원으로 센다. 표의 줄과 옮기는 양이 서로 다른 인원을 쓰지 않게
 	local shift = 0
 	if shipSize == "Small" then
-		shift = -Config.SHIP_SIZE_SHIFT * p
+		shift = -Config.SHIP_SIZE_SHIFT * people
 	elseif shipSize == "Large" then
-		shift = Config.SHIP_SIZE_SHIFT * p
+		shift = Config.SHIP_SIZE_SHIFT * people
 	end
 	return row.lo + shift, row.hi + shift
 end
