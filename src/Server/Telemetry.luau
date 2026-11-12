@@ -25,12 +25,12 @@ local COLUMNS = {
 	"time", "boat", "P", "humans", "bots", "rangeLo", "rangeHi", "limit",
 	"firstBellAt", "firstBellCause", "gap1", "gap2", "endAt", "result", "sinkerSlot",
 	"weight", "markWeight", "oneMoreSmall", "oneMoreMedium", "oneMoreLarge", "oneMoreGold",
-	"participants", -- 슬롯:점수:실은 상자:가만히 선 초:물에 빠진 횟수 를 | 로 이음
-	"hugTries", "hugSuccess", "reclaims", "repicks", -- S21에서 채운다
+	"participants", -- 슬롯:점수:실은 상자:가만히 선 초:물에 빠진 횟수:버려진 점수 를 | 로 이음
+	"hugTries", "hugSuccess", "reclaims", "repicks", -- 끌어안기 시작, 3초를 채운 것, 되찾기, 다시 들기(S21)
 	"goldSlot", "goldWeight", "goldResult", "totals", -- S26에서 채운다
 }
 
-type PersonLog = { crates: number, still: number, falls: number }
+type PersonLog = { crates: number, still: number, falls: number, lost: number }
 type Round = {
 	startedAt: number,
 	boat: number,
@@ -46,6 +46,10 @@ type Round = {
 	firstBellCause: string?,
 	oneMore: { [string]: number },
 	people: { [number]: PersonLog },
+	hugTries: number,
+	hugSuccess: number,
+	reclaims: number,
+	repicks: number,
 }
 type Row = {
 	length: number,
@@ -74,7 +78,7 @@ local function person(player: Player): PersonLog?
 	end
 	local log = round.people[slot]
 	if log == nil then
-		log = { crates = 0, still = 0, falls = 0 }
+		log = { crates = 0, still = 0, falls = 0, lost = 0 }
 		round.people[slot] = log
 	end
 	return log
@@ -105,6 +109,10 @@ function Telemetry.beginRound(info: { boat: number, p: number, lo: number, hi: n
 		firstBellCause = nil,
 		oneMore = {},
 		people = {},
+		hugTries = 0,
+		hugSuccess = 0,
+		reclaims = 0,
+		repicks = 0,
 	}
 	table.clear(stillAnchor)
 	for _, player in ParticipantService.players() do
@@ -138,6 +146,47 @@ function Telemetry.placed(player: Player, kind: string)
 		round.oneMore[kind] = (round.oneMore[kind] or 0) + 1
 	end
 	pickedAt[player] = nil
+end
+
+-- 갑판의 내 상자를 다시 들었다(CR-8). 실은 상자 수에서 빼고, 든 시각은 적지 않는다("하나 더"가 아니다)
+function Telemetry.repicked(player: Player)
+	pickedAt[player] = nil
+	local round = current
+	local log = person(player)
+	if round == nil or log == nil then
+		return
+	end
+	log.crates = math.max(log.crates - 1, 0)
+	round.repicks += 1
+end
+
+-- 끌어안기가 시작됐다
+function Telemetry.hugStarted()
+	local round = current
+	if round then
+		round.hugTries += 1
+	end
+end
+
+-- 끌어안기가 3초를 채워 상자가 버려졌다. 주인이 잃은 점수를 적는다
+function Telemetry.hugCompleted(ownerSlot: number?, score: number)
+	local round = current
+	if round == nil then
+		return
+	end
+	round.hugSuccess += 1
+	local log = ownerSlot and round.people[ownerSlot]
+	if log then
+		log.lost += score
+	end
+end
+
+-- 되찾기 한 번(끌어안던 사람 한 명마다)
+function Telemetry.reclaimed()
+	local round = current
+	if round then
+		round.reclaims += 1
+	end
 end
 
 function Telemetry.fellIn(player: Player)
@@ -234,7 +283,7 @@ function Telemetry.endRound(result: string, sinkerSlot: number?, weight: number,
 		local log = round.people[slot]
 		local record = ReplicatedStorage:FindFirstChild("Participants") and ReplicatedStorage.Participants:FindFirstChild(tostring(slot))
 		local score = record and record:GetAttribute("BoatScore") or 0
-		table.insert(people, `{slot}:{score}:{log.crates}:{fmt(log.still)}:{log.falls}`)
+		table.insert(people, `{slot}:{score}:{log.crates}:{fmt(log.still)}:{log.falls}:{log.lost}`)
 		table.insert(stills, log.still)
 	end
 	local oneMoreTotal = 0
@@ -250,7 +299,7 @@ function Telemetry.endRound(result: string, sinkerSlot: number?, weight: number,
 		tostring(round.oneMore[Kind.Small] or 0), tostring(round.oneMore[Kind.Medium] or 0),
 		tostring(round.oneMore[Kind.Large] or 0), tostring(round.oneMore[Kind.Gold] or 0),
 		table.concat(people, "|"),
-		"", "", "", "",
+		tostring(round.hugTries), tostring(round.hugSuccess), tostring(round.reclaims), tostring(round.repicks),
 		"", "", "", "",
 	}
 	print("TELEMETRY," .. table.concat(values, ","))

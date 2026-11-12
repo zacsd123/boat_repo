@@ -1,7 +1,8 @@
 --!strict
--- 들기, 놓기, 버리기. 손에 붙이기. 화물칸의 칸.
+-- 들기, 놓기, 버리기, 내 상자 다시 들기. 손에 붙이기. 화물칸의 칸.
 -- Tap을 받으면 그 순간의 상황을 모아 InputRules.tap에 넘기고, 돌아온 답을 실행한다(03-architecture.md "톡 누르기를 처리하는 순서").
--- 이 함수는 시작부터 끝까지 기다리지 않는다. 같은 순간에 온 Tap도 도착한 순서대로 하나씩 끝까지 처리된다.
+-- HoldBegin과 HoldEnd(S17)는 누른 시간을 서버가 재서 InputRules.hold에 넘긴다(GP-9).
+-- 이 함수들은 시작부터 끝까지 기다리지 않는다. 같은 순간에 온 요청도 도착한 순서대로 하나씩 끝까지 처리된다.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -32,8 +33,19 @@ local fx: RemoteEvent
 local root: BasePart -- 배의 Root
 
 local lastTapAt: { [Player]: number } = {}
+local lastHoldAt: { [Player]: number } = {}
+local holdStart: { [Player]: { crateId: number, at: number } } = {} -- 꾹 누르기를 시작한 상자와 받은 시각
 local carried: { [Player]: Model } = {}
 local nextCrateId = 0
+
+-- 끌어안기(S18)와 되찾기(S19)는 HugService가 맡는다. HugService가 이 모듈을 require하므로,
+-- 거꾸로 부를 함수는 HugService가 켜질 때 여기에 걸어 둔다(순환 require 방지)
+export type HugHooks = {
+	begin: (player: Player, crate: Model) -> (), -- 꾹 누르기가 "끌어안기"로 끝났다
+	reclaimable: (player: Player, rootPart: BasePart) -> boolean, -- 되찾을 상자가 손 닿는 곳에 있나
+	reclaim: (player: Player, rootPart: BasePart) -> (), -- 되찾는다
+}
+local hugHooks: HugHooks? = nil
 
 -- 바닥 위 거리. 캐릭터 몸통과 바닥 표시의 높이 차가 거리를 줄이지 않게 평면으로 잰다
 local function flatDistance(a: Vector3, b: Vector3): number
@@ -70,7 +82,7 @@ local function newCrate(kind: string, ownerSlot: number?): Model
 end
 
 -- 빈손일 때의 들기(IN-3). 상자를 가슴 앞에 붙인다. 질량과 충돌을 꺼서 걸음을 방해하지 않는다
-local function pickUp(player: Player, kind: string, rootPart: BasePart)
+local function pickUp(player: Player, kind: string, rootPart: BasePart, fromDeck: boolean?)
 	local slot = ParticipantService.slotOf(player)
 	local model = newCrate(kind, slot)
 	local body = model.PrimaryPart :: BasePart
@@ -85,7 +97,11 @@ local function pickUp(player: Player, kind: string, rootPart: BasePart)
 	model.Parent = player.Character
 	carried[player] = model
 	ParticipantService.setState(player, State.Carrying, kind)
-	Telemetry.pickedUp(player)
+	if fromDeck then
+		Telemetry.repicked(player) -- 갑판에서 다시 든 상자는 "하나 더"가 아니다
+	else
+		Telemetry.pickedUp(player)
+	end
 end
 
 local function dropCarried(player: Player)
@@ -237,6 +253,131 @@ local function pileKind(target: any): string?
 	return nil
 end
 
+-- 서버가 그 순간에 본 상황. 들 것과 되찾을 것은 부르는 쪽이 채운다
+local function situationOf(player: Player, rootPart: BasePart, state: string): InputRules.Situation
+	return {
+		phase = RoundService.getPhase() or "",
+		state = state,
+		onDeck = BoatService.isOnDeck(rootPart.Position),
+		carrying = ParticipantService.carryingOf(player),
+		pickupInReach = false,
+		reclaimable = false,
+	}
+end
+
+-- 번호로 실린 상자를 찾는다
+function CrateService.findCrate(crateId: any): Model?
+	if type(crateId) ~= "number" then
+		return nil
+	end
+	for _, crate in cargo:GetChildren() do
+		if crate:IsA("Model") and crate:GetAttribute("CrateId") == crateId then
+			return crate
+		end
+	end
+	return nil
+end
+
+-- 그 상자 위에 다른 상자가 쌓였는지(GP-4). 같은 칸에서 층이 더 높은 상자가 있으면 그렇다
+function CrateService.isCovered(crate: Model): boolean
+	local cell = crate:GetAttribute("Cell")
+	local layer = (crate:GetAttribute("Layer") :: number?) or 0
+	for _, other in cargo:GetChildren() do
+		if other ~= crate and other:GetAttribute("Cell") == cell and ((other:GetAttribute("Layer") :: number?) or 0) > layer then
+			return true
+		end
+	end
+	return false
+end
+
+-- 캐릭터에서 실린 상자까지의 바닥 위 거리
+function CrateService.distanceTo(rootPart: BasePart, crate: Model): number
+	return flatDistance(rootPart.Position, (crate.PrimaryPart :: BasePart).Position)
+end
+
+-- 갑판의 내 상자를 다시 든다(CR-8). 드는 순간 무게와 점수에서 빠진다
+local function repick(player: Player, crate: Model, rootPart: BasePart)
+	local kind = crate:GetAttribute("Kind") :: string
+	crate:Destroy()
+	pickUp(player, kind, rootPart, true)
+	BoatService.onRemoved()
+	ScoreService.recompute()
+end
+
+-- 꾹 누르기 시작. 상자가 있는지만 보고 받은 시각을 적어 둔다
+function CrateService.handleHoldBegin(player: Player, crateId: any)
+	ParticipantService.markInput(player)
+	local now = os.clock()
+	local last = lastHoldAt[player]
+	if last ~= nil and now - last < Config.INPUT_MIN_INTERVAL then
+		reject(player, "HoldBegin이 INPUT_MIN_INTERVAL 안에 또 옴")
+		return
+	end
+	lastHoldAt[player] = now
+	if CrateService.findCrate(crateId) == nil then
+		holdStart[player] = nil
+		reject(player, `HoldBegin의 상자({tostring(crateId)})가 없음`)
+		return
+	end
+	holdStart[player] = { crateId = crateId, at = now }
+end
+
+-- 꾹 누르기 끝. 시작과의 간격을 서버가 재고(GP-9), 그 순간의 상황과 대상을 InputRules.hold에 넘긴다.
+-- 클라이언트가 보낸 "다 채웠는지"는 취소를 알리는 데만 쓴다. 채웠는지는 서버가 잰 시간으로 본다
+function CrateService.handleHoldEnd(player: Player, crateId: any, filled: any)
+	local started = holdStart[player]
+	holdStart[player] = nil
+	if started == nil or started.crateId ~= crateId then
+		reject(player, "HoldEnd에 맞는 HoldBegin이 없음")
+		return
+	end
+	if filled ~= true then
+		return -- 누르는 중에 멀어져 취소했다
+	end
+	local heldTime = os.clock() - started.at
+
+	local rootPart = rootPartOf(player)
+	local state = ParticipantService.stateOf(player)
+	local slot = ParticipantService.slotOf(player)
+	if rootPart == nil or state == nil or slot == nil then
+		reject(player, "캐릭터나 참가자 기록이 없음")
+		return
+	end
+
+	-- 대상은 지금도 있고 손 닿는 거리 안이어야 한다(GP-5). 아니면 대상이 없는 것으로 본다
+	local crate = CrateService.findCrate(crateId)
+	local target: InputRules.Target? = nil
+	if crate ~= nil and CrateService.distanceTo(rootPart, crate) <= Config.TARGET_RANGE then
+		local huggedBy = crate:GetAttribute("HuggedBySlot") :: number?
+		target = {
+			mine = crate:GetAttribute("OwnerSlot") == slot,
+			huggedBy = if huggedBy then tostring(huggedBy) else nil,
+			covered = CrateService.isCovered(crate),
+		}
+	end
+
+	local action = InputRules.hold(situationOf(player, rootPart, state), target, heldTime, {
+		holdTime = Config.HOLD_TIME,
+		holdTolerance = Config.HOLD_TOLERANCE,
+		hugEnabled = Config.HUG_ENABLED,
+	})
+	if action == "Repick" and crate ~= nil then
+		repick(player, crate, rootPart)
+	elseif action == "Hug" and crate ~= nil then
+		local hooks = hugHooks
+		if hooks ~= nil then
+			hooks.begin(player, crate)
+		end
+	else
+		reject(player, `HoldEnd 버림: 누른 시간 {string.format("%.2f", heldTime)}초, 상태 {state}, 대상 {if target then "있음" else "없음"}`)
+	end
+end
+
+-- HugService가 켜질 때 끌어안기와 되찾기를 건다
+function CrateService.setHugHooks(hooks: HugHooks)
+	hugHooks = hooks
+end
+
 -- Tap 하나를 처리한다. 클라이언트의 값은 믿지 않고 서버의 상태로 다시 본다
 function CrateService.handleTap(player: Player, target: any)
 	ParticipantService.markInput(player) -- 버튼을 보낸 것 자체가 입력이다(GP-10)
@@ -247,6 +388,7 @@ function CrateService.handleTap(player: Player, target: any)
 		return
 	end
 	lastTapAt[player] = now
+	holdStart[player] = nil -- 다 채우기 전에 뗀 꾹 누르기는 톡 누르기가 된다
 
 	local rootPart = rootPartOf(player)
 	local state = ParticipantService.stateOf(player)
@@ -261,14 +403,10 @@ function CrateService.handleTap(player: Player, target: any)
 		pileDistance = flatDistance(rootPart.Position, pileSpots[kind].Position)
 	end
 
-	local situation: InputRules.Situation = {
-		phase = RoundService.getPhase() or "",
-		state = state,
-		onDeck = BoatService.isOnDeck(rootPart.Position),
-		carrying = ParticipantService.carryingOf(player),
-		pickupInReach = pileDistance ~= nil and pileDistance <= Config.TARGET_RANGE,
-		reclaimable = false, -- 되찾기는 S19
-	}
+	local situation = situationOf(player, rootPart, state)
+	situation.pickupInReach = pileDistance ~= nil and pileDistance <= Config.TARGET_RANGE
+	local hooks = hugHooks
+	situation.reclaimable = hooks ~= nil and hooks.reclaimable(player, rootPart)
 	local action = InputRules.tap(situation)
 
 	if action == "Place" then
@@ -277,8 +415,11 @@ function CrateService.handleTap(player: Player, target: any)
 		dropCarried(player) -- 황금 상자를 그 자리에 남기는 것은 S22
 	elseif action == "Pickup" and kind ~= nil then
 		pickUp(player, kind, rootPart)
+	elseif action == "Reclaim" and hooks ~= nil then
+		hooks.reclaim(player, rootPart)
 	elseif action == "Hint" then
-		-- 힌트는 S17
+		-- 되찾을 것이 없다. "여기는 꾹 눌러야 한다"만 그 사람에게 알린다(IN-4)
+		fx:FireClient(player, "HoldHint")
 	else
 		local reason = `단계 {situation.phase}, 상태 {state}`
 		if situation.phase == Phase.Loading and state == State.Empty and not situation.onDeck then
@@ -326,6 +467,9 @@ function CrateService.start()
 	fx = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Fx") :: RemoteEvent
 	local tap = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Tap") :: RemoteEvent
 	tap.OnServerEvent:Connect(CrateService.handleTap)
+	local remotes = ReplicatedStorage:WaitForChild("Remotes")
+	;(remotes:WaitForChild("HoldBegin") :: RemoteEvent).OnServerEvent:Connect(CrateService.handleHoldBegin)
+	;(remotes:WaitForChild("HoldEnd") :: RemoteEvent).OnServerEvent:Connect(CrateService.handleHoldEnd)
 
 	-- 사람이 나가면 든 상자와 갑판의 그 사람 상자를 모두 없애고, 무게와 점수를 다시 더한다(JN-2).
 	-- 젖은 자국과 이미 울린 종은 그대로다(BoatRules의 "빠졌다"는 무게만 고친다)
@@ -336,6 +480,8 @@ function CrateService.start()
 		end
 		carried[player] = nil
 		lastTapAt[player] = nil
+		lastHoldAt[player] = nil
+		holdStart[player] = nil
 		local removed = 0
 		for _, crate in cargo:GetChildren() do
 			if crate:GetAttribute("OwnerSlot") == slot then

@@ -6,6 +6,7 @@
 local HudLayout = {
 	EDGE = 24, -- 화면 가장자리에서 버튼까지, 그리고 막대 위 끝에서 화면 위까지
 	BUTTON_SIZE = 96, -- 둥근 버튼의 지름
+	BUTTON_RING_THICKNESS = 5, -- 꾹 눌러야 하는 대상 앞에서 버튼에 뜨는 고리의 굵기(S17)
 	BAR_WIDTH = 28, -- 수위 막대의 폭
 	BAR_MAX_HEIGHT = 220, -- 수위 막대의 가장 큰 높이. 화면이 낮으면 이보다 짧아진다
 	BAR_MIN_HEIGHT = 80, -- 화면이 아주 낮아도 막대가 읽히는 가장 작은 높이

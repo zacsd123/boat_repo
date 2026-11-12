@@ -1,7 +1,7 @@
 --!strict
 -- Studio에서만 동작하는 시험 도구. 게시된 서버에서는 모든 값이 무시된다.
 -- 시험용 값은 Config에 두지 않는다(docs/02-config.md의 "시험용 값").
--- 이 단계(S02)에서는 값 다섯의 자리만 둔다. 쓰는 것은 S03, S06, S09, S10이다.
+-- 값 다섯(S02)과, 단계마다 더한 시험 명령들. 명령은 DevCommand로 부른다(맨 아래).
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -38,6 +38,31 @@ end
 function DevTools.shouldRunTests(): boolean
 	if not RunService:IsStudio() then return false end
 	return DEBUG_RUN_TESTS
+end
+
+-- 플레이를 다시 켜지 않고 시험용 값을 바꾼다. 다음 Loading부터 쓰인다. value를 안 주면 "없음"으로 되돌린다
+--   game.ServerStorage.DevCommand:Invoke("force", "limit", 47)
+function DevTools.force(name: string, value: any): string
+	if not RunService:IsStudio() then return "" end
+	if name == "limit" then
+		DEBUG_FORCE_LIMIT = value
+	elseif name == "gaps" then
+		DEBUG_FORCE_BELL_GAPS = value
+	elseif name == "p" then
+		DEBUG_FORCE_P = value
+	elseif name == "printLimit" then
+		DEBUG_PRINT_LIMIT = value == true
+	else
+		return `force: {name}은 없다(limit, gaps, p, printLimit)`
+	end
+	return `force {name} = {tostring(value)}`
+end
+
+-- 지금 배를 버리고 다음 배를 바로 들인다(Arriving부터). 시험용 값을 바꾼 뒤 새 라운드를 빨리 시작할 때 쓴다
+function DevTools.nextBoat()
+	if not RunService:IsStudio() then return end
+	local RoundService = require(script.Parent.RoundService) :: any
+	RoundService.setPhase("Arriving")
 end
 
 -- 점이 구역 상자 안에 있는지
@@ -180,6 +205,18 @@ function DevTools.bellSimulation(n: number?, longerThan: number?): string
 		.. `평균 {string.format("%.2f", sum / count)}초, {string.format("%.1f", threshold)}초를 넘는 비율 {string.format("%.0f", over / count * 100)}%`
 	print(summary)
 	return summary
+end
+
+-- 플레이어 대신 꾹 누르기를 보낸다(S17). HoldBegin을 보내고 heldSeconds 뒤에 HoldEnd("다 채움")를 보낸다.
+-- 서버의 확인을 그대로 지나므로, 0.1초처럼 짧으면 서버가 버린다
+function DevTools.fakeHold(crateId: number, heldSeconds: number, player: Player?)
+	if not RunService:IsStudio() then return end
+	local who = player or Players:GetPlayers()[1]
+	if who == nil then return end
+	local CrateService = require(script.Parent.CrateService) :: any
+	CrateService.handleHoldBegin(who, crateId)
+	task.wait(heldSeconds)
+	CrateService.handleHoldEnd(who, crateId, true)
 end
 
 -- 첫 플레이어(또는 player)를 가까운 물 자리로 던져 넣는다(S12)

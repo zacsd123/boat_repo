@@ -261,7 +261,8 @@ function ParticipantService.carryingOf(player: Player): string?
 	return carrying :: string?
 end
 
--- 상태와 든 상자를 바꾼다. 걷는 속도도 여기서 함께 바꾼다(빈손인데 느린 상태가 생기지 않게)
+-- 상태와 든 상자를 바꾼다. 걷는 속도도 여기서 함께 바꾼다(빈손인데 느린 상태가 생기지 않게).
+-- 0은 Config의 수치가 아니라 "움직이지 못한다"는 뜻이다
 function ParticipantService.setState(player: Player, state: string, carrying: string?)
 	local record = recordOf[player]
 	if record == nil then
@@ -272,9 +273,14 @@ function ParticipantService.setState(player: Player, state: string, carrying: st
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
-		humanoid.WalkSpeed = if state == Types.ParticipantState.InWater
-			then Config.WATER_SPEED
-			else Config.carrySpeed(carrying or Types.ParticipantState.Empty)
+		-- 끌어안는 동안은 제자리다(HG-3). 물속은 WATER_SPEED, 그 밖에는 든 상자에 맞춘 속도
+		if state == Types.ParticipantState.Hugging then
+			humanoid.WalkSpeed = 0
+		elseif state == Types.ParticipantState.InWater then
+			humanoid.WalkSpeed = Config.WATER_SPEED
+		else
+			humanoid.WalkSpeed = Config.carrySpeed(carrying or Types.ParticipantState.Empty)
+		end
 	end
 end
 
