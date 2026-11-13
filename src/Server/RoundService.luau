@@ -28,6 +28,7 @@ local phaseStartedAt = 0 -- 서버 시각. 다음 단계는 앞 단계가 끝나
 local phaseEnteredAt = 0 -- 실제로 단계에 들어간 서버 시각. 길이 확인용
 local boatIndex = 0
 local listeners: { (newPhase: string?, oldPhase: string?) -> () } = {}
+local endingListeners: { (newPhase: string?) -> () } = {}
 local sinkerSlot: number? = nil -- 이번 배를 가라앉힌 참가자(S11에서 점수에 쓴다)
 
 -- 시간으로 끝나는 단계의 길이와 다음 단계
@@ -107,6 +108,10 @@ function RoundService.setPhase(newPhase: string?, startedAt: number?)
 	local oldPhase = phase
 	if oldPhase == Phase.Loading then
 		ParticipantService.endRound()
+		-- 라운드가 끝나는 순간. 점수를 굳히기(onEnter) 전에 알린다: 진행 중이던 끌어안기가 여기서 무효가 된다(HG-7)
+		for _, listener in endingListeners do
+			listener(newPhase)
+		end
 	end
 	phase = newPhase
 	phaseStartedAt = t
@@ -126,6 +131,11 @@ end
 -- 단계가 바뀔 때마다 부를 함수를 건다. 이 모듈이 다른 서비스를 require하지 않도록 거꾸로 알린다
 function RoundService.onPhaseChanged(listener: (newPhase: string?, oldPhase: string?) -> ())
 	table.insert(listeners, listener)
+end
+
+-- Loading이 끝나는 순간, 점수를 굳히기 전에 부를 함수를 건다. newPhase는 Departing, Sinking 또는 nil(모두 나감)
+function RoundService.onRoundEnding(listener: (newPhase: string?) -> ())
+	table.insert(endingListeners, listener)
 end
 
 function RoundService.getPhase(): string?

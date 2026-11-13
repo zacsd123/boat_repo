@@ -209,12 +209,52 @@ local function placeOnDeck(player: Player, rootPart: BasePart)
 	end
 end
 
+-- 아래 상자가 사라진 칸에서는 위 상자가 내려온다(S20). 칸마다 층 번호와 자리를 아래부터 다시 매긴다.
+-- 바뀐 것이 없는 칸은 건드리지 않는다
+local function settleStacks()
+	local stacks: { [number]: { Model } } = {}
+	for _, crate in cargo:GetChildren() do
+		local cell = crate:GetAttribute("Cell") :: number?
+		if cell and crate:IsA("Model") then
+			local stack = stacks[cell] or {}
+			stacks[cell] = stack
+			table.insert(stack, crate)
+		end
+	end
+	for cell, stack in stacks do
+		table.sort(stack, function(a, b)
+			return ((a:GetAttribute("Layer") :: number?) or 0) < ((b:GetAttribute("Layer") :: number?) or 0)
+		end)
+		local base = (cargoHold:FindFirstChild("Cell" .. cell) :: Attachment).WorldCFrame
+		local dropped = false -- 이 층부터 위는 모두 내려와야 한다
+		for layer, crate in stack do
+			local body = crate.PrimaryPart :: BasePart
+			if crate:GetAttribute("Layer") ~= layer then
+				dropped = true
+				crate:SetAttribute("Layer", layer)
+			end
+			if dropped then
+				local weld = body:FindFirstChildOfClass("WeldConstraint")
+				if weld then
+					weld.Enabled = false
+				end
+				crate:PivotTo(base * CFrame.new(0, body.Size.Y / 2, 0))
+				if weld then
+					weld.Enabled = true
+				end
+			end
+			base = body.CFrame * CFrame.new(0, body.Size.Y / 2, 0)
+		end
+	end
+end
+
 -- 실린 상자 하나를 갑판에서 뺀다. 무게를 다시 더한다
 function CrateService.removeCrate(model: Instance)
 	if model.Parent ~= cargo then
 		return
 	end
 	model:Destroy()
+	settleStacks()
 	BoatService.onRemoved()
 	ScoreService.recompute()
 end
@@ -490,6 +530,7 @@ function CrateService.start()
 			end
 		end
 		if removed > 0 then
+			settleStacks()
 			BoatService.onRemoved()
 			ScoreService.recompute()
 		end

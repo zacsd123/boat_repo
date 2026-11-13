@@ -12,12 +12,14 @@ local Types = require(ReplicatedStorage.Shared.Types)
 local HugRules = require(ReplicatedStorage.Shared.Rules.HugRules)
 local InputRules = require(ReplicatedStorage.Shared.Rules.InputRules)
 local ParticipantService = require(script.Parent.ParticipantService)
+local RoundService = require(script.Parent.RoundService)
 local BoatService = require(script.Parent.BoatService)
 local CrateService = require(script.Parent.CrateService)
 local WaterService = require(script.Parent.WaterService)
 local Telemetry = require(script.Parent.Telemetry)
 
 local State = Types.ParticipantState
+local Phase = Types.Phase
 local Reason = HugRules.Reason
 
 local HugService = {}
@@ -164,6 +166,20 @@ function HugService.endAll(reason: HugRules.EndReason)
 	end
 end
 
+-- 사람이 나갈 때(S20). 끌어안던 사람이 나가면 상자는 제자리에 남고(JN-3),
+-- 주인이 나가면 상자와 함께 끌어안기도 끝나고 끌어안던 사람은 갑판에 남는다(HG-8).
+-- 주인의 상자는 CrateService가 치운다(JN-2). 여기서는 끌어안기만 끝낸다
+local function onLeaving(player: Player, slot: number)
+	nextReclaimAt[player] = nil
+	for crate, hug in hugs do
+		if hug.hugger == player then
+			HugService.endHug(crate, Reason.HuggerLeft)
+		elseif hug.ownerSlot == slot then
+			HugService.endHug(crate, Reason.OwnerLeft)
+		end
+	end
+end
+
 -- 매 프레임: 시간이 찬 끌어안기를 끝낸다(HG-5)
 local function step()
 	local t = now()
@@ -194,6 +210,11 @@ function HugService.start()
 		reclaimable = HugService.reclaimable,
 		reclaim = HugService.reclaim,
 	})
+	ParticipantService.onLeaving(onLeaving)
+	RoundService.onRoundEnding(function(newPhase)
+		-- 침몰이면 갑판 위의 다른 사람과 함께 물에 빠지고, 그 밖에는(출항, 모두 나감) 선착장에 내린다
+		HugService.endAll(if newPhase == Phase.Sinking then Reason.Sank else Reason.Departed)
+	end)
 	RunService.Heartbeat:Connect(step)
 end
 
