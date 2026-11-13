@@ -219,6 +219,15 @@ function DevTools.fakeHold(crateId: number, heldSeconds: number, player: Player?
 	CrateService.handleHoldEnd(who, crateId, true)
 end
 
+-- 끌어안는 사람 없이 그 상자를 끌어안긴 상태로 만든다(S18). 주인의 경고와 되찾기를 혼자 시험할 때 쓴다
+function DevTools.ghostHug(crateId: number): boolean
+	if not RunService:IsStudio() then return false end
+	local CrateService = require(script.Parent.CrateService) :: any
+	local HugService = require(script.Parent.HugService) :: any
+	local crate = CrateService.findCrate(crateId)
+	return crate ~= nil and HugService.beginGhost(crate)
+end
+
 -- 첫 플레이어(또는 player)를 가까운 물 자리로 던져 넣는다(S12)
 function DevTools.throwIn(player: Player?)
 	if not RunService:IsStudio() then return end

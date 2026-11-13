@@ -238,6 +238,11 @@ function ParticipantService.slotOf(player: Player): number?
 	return slotOfPlayer[player]
 end
 
+-- 그 슬롯의 참가자. 비어 있으면 nil
+function ParticipantService.playerOf(slot: number): Player?
+	return playerInSlot[slot]
+end
+
 -- 참가자 기록 폴더(ReplicatedStorage.Participants.<슬롯>)
 function ParticipantService.recordOf(player: Player): Folder?
 	return recordOf[player]

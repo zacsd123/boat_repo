@@ -13,6 +13,9 @@ local HudLayout = {
 	GAP = 16, -- 버튼 위 끝과 막대 아래 끝 사이
 	MINI_BELL_SIZE = 14, -- 수위 막대 옆 작은 종 하나의 지름(S14)
 	MINI_BELL_GAP = 6, -- 작은 종 사이, 그리고 작은 종과 막대 사이
+	HUG_COLOR = Color3.fromRGB(230, 50, 50), -- 끌어안기의 빨간 고리와 경고 화살표(S18)
+	ALERT_SIZE = 56, -- 내 상자가 끌어안길 때 화면 가장자리에 뜨는 화살표의 크기
+	ALERT_MARGIN = 48, -- 화살표가 화면 가장자리에서 떨어진 거리
 }
 
 return table.freeze(HudLayout)

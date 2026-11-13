@@ -6,8 +6,12 @@
 -- - 수위 막대(S08, UI-1): 아래부터 안전 구간, 빨간 구간, 지금 수위, 최고 수위. 글자와 숫자 없음. 모양은 디자인 전 임시.
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
+local Config = require(ReplicatedStorage.Shared.Config)
 local HudLayout = require(script.Parent.HudLayout)
+local RingGui = require(script.Parent.RingGui)
 
 local HudController = {}
 
@@ -170,7 +174,144 @@ function HudController.start()
 	end
 
 	HudController.startHeads(boat)
+	HudController.startHugs(boat)
 	HudController.startOwnerSummary(boat)
+end
+
+-- 끌어안긴 상자 위의 빨간 고리(S18). 누구에게나 보이고, 상자의 HugEndsAt(서버 시각)까지 차오른다.
+-- 내 상자가 끌어안기면 서버가 나에게만 HugAlert를 보낸다. 그 상자 쪽을 가리키는 화살표를 화면 가장자리에 띄운다(HG-6).
+-- 화살표는 둥근 판에 뾰족한 끝을 붙인 모양이고 글자는 없다. 모양은 디자인 전 임시
+local ALERT_GUI = "HugAlerts"
+
+local function buildAlert(parent: Instance): Frame
+	local arrow = Instance.new("Frame")
+	arrow.Name = "Arrow"
+	arrow.AnchorPoint = Vector2.new(0.5, 0.5)
+	arrow.Size = UDim2.fromOffset(HudLayout.ALERT_SIZE, HudLayout.ALERT_SIZE)
+	arrow.BackgroundTransparency = 1
+	-- 돌리지 않았을 때 위쪽을 가리킨다
+	local tip = Instance.new("Frame")
+	tip.Name = "Tip"
+	tip.AnchorPoint = Vector2.new(0.5, 0.5)
+	tip.Position = UDim2.fromScale(0.5, 0.3)
+	tip.Size = UDim2.fromScale(0.46, 0.46)
+	tip.Rotation = 45
+	tip.BackgroundColor3 = HudLayout.HUG_COLOR
+	tip.BorderSizePixel = 0
+	tip.Parent = arrow
+	local disc = Instance.new("Frame")
+	disc.Name = "Disc"
+	disc.AnchorPoint = Vector2.new(0.5, 0.5)
+	disc.Position = UDim2.fromScale(0.5, 0.6)
+	disc.Size = UDim2.fromScale(0.7, 0.7)
+	disc.BackgroundColor3 = HudLayout.HUG_COLOR
+	disc.BorderSizePixel = 0
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0.5, 0)
+	corner.Parent = disc
+	disc.Parent = arrow
+	arrow.Parent = parent
+	return arrow
+end
+
+function HudController.startHugs(boat: Instance)
+	local cargo = boat:WaitForChild("Cargo")
+	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+	local fx = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Fx") :: RemoteEvent
+	local rings: { [Instance]: RingGui.Ring } = {}
+	local alerts: { [Instance]: Frame? } = {}
+
+	local alertGui = Instance.new("ScreenGui")
+	alertGui.Name = ALERT_GUI
+	alertGui.ResetOnSpawn = false
+	alertGui.IgnoreGuiInset = true
+	alertGui.Parent = playerGui
+
+	local function clear(crate: Instance)
+		local ring = rings[crate]
+		if ring then
+			ring.destroy()
+			rings[crate] = nil
+		end
+		local arrow = alerts[crate]
+		if arrow then
+			arrow:Destroy()
+			alerts[crate] = nil
+		end
+	end
+
+	local function refresh(crate: Instance)
+		local hugged = crate.Parent == cargo and crate:GetAttribute("HuggedBySlot") ~= nil
+		if not hugged then
+			clear(crate)
+		elseif rings[crate] == nil then
+			local body = crate:WaitForChild("Body", 5) :: BasePart?
+			if body and rings[crate] == nil and crate:GetAttribute("HuggedBySlot") ~= nil then
+				rings[crate] = RingGui.new(body, HudLayout.HUG_COLOR, playerGui)
+			end
+		end
+	end
+
+	local function watch(crate: Instance)
+		crate:GetAttributeChangedSignal("HuggedBySlot"):Connect(function()
+			refresh(crate)
+		end)
+		refresh(crate)
+	end
+	cargo.ChildAdded:Connect(watch)
+	cargo.ChildRemoved:Connect(clear)
+	for _, crate in cargo:GetChildren() do
+		task.spawn(watch, crate)
+	end
+
+	fx.OnClientEvent:Connect(function(name: string, crate: any)
+		if name == "HugAlert" and typeof(crate) == "Instance" and alerts[crate] == nil then
+			alerts[crate] = buildAlert(alertGui)
+		end
+	end)
+
+	RunService.RenderStepped:Connect(function()
+		local now = workspace:GetServerTimeNow()
+		for crate, ring in rings do
+			local endsAt = crate:GetAttribute("HugEndsAt") :: number?
+			if endsAt then
+				ring.set(1 - (endsAt - now) / Config.HUG_TIME)
+			end
+		end
+		local camera = workspace.CurrentCamera
+		for crate, arrow in alerts :: { [Instance]: Frame } do
+			local body = crate:FindFirstChild("Body") :: BasePart?
+			if crate.Parent ~= cargo or crate:GetAttribute("HuggedBySlot") == nil or body == nil or camera == nil then
+				arrow:Destroy()
+				alerts[crate] = nil
+				continue
+			end
+			-- 상자가 화면 안에 있으면 그 자리에, 밖이면 그쪽 화면 가장자리에 놓고 상자 쪽으로 돌린다
+			local viewport = camera.ViewportSize
+			local center = viewport / 2
+			local point = camera:WorldToViewportPoint(body.Position)
+			local direction = Vector2.new(point.X - center.X, point.Y - center.Y)
+			if point.Z < 0 then
+				direction = -direction -- 카메라 뒤에 있으면 방향이 뒤집혀 나온다
+			end
+			if direction.Magnitude < 1 then
+				direction = Vector2.new(0, -1)
+			end
+			local unit = direction.Unit
+			local margin = HudLayout.ALERT_MARGIN
+			local inView = point.Z > 0
+				and point.X >= margin and point.X <= viewport.X - margin
+				and point.Y >= margin and point.Y <= viewport.Y - margin
+			local position = Vector2.new(point.X, point.Y)
+			if not inView then
+				local reachX = if unit.X ~= 0 then (center.X - margin) / math.abs(unit.X) else math.huge
+				local reachY = if unit.Y ~= 0 then (center.Y - margin) / math.abs(unit.Y) else math.huge
+				position = center + unit * math.min(reachX, reachY)
+			end
+			arrow.Position = UDim2.fromOffset(position.X, position.Y)
+			arrow.Rotation = math.deg(math.atan2(unit.Y, unit.X)) + 90
+		end
+	end)
 end
 
 -- 게임 주인에게만 보이는 요약 창(S15). 서버가 주인에게만 OwnerSummary를 보낸다. 받은 적이 없으면 창을 만들지 않는다.

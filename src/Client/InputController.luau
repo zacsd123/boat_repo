@@ -39,9 +39,11 @@ local LOOK: { [string]: Look } = {
 	Discard = { color = Color3.fromRGB(210, 60, 60), raised = false, cross = true, ring = false },
 	DropGold = { color = Color3.fromRGB(210, 60, 60), raised = false, cross = true, ring = false },
 	Repick = { color = Color3.fromRGB(60, 60, 60), raised = false, cross = false, ring = true },
+	Hug = { color = Color3.fromRGB(60, 60, 60), raised = false, cross = false, ring = true },
 }
 local RING_COLOR: { [string]: Color3 } = {
 	Repick = WHITE, -- 내 상자는 흰 고리(IN-6)
+	Hug = HudLayout.HUG_COLOR, -- 남의 상자는 빨간 고리
 }
 
 local HOLD_SETTINGS: InputRules.HoldSettings = {

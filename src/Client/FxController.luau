@@ -26,6 +26,9 @@ local SHAKE_SIZE = 0.6 -- 흔들림 크기(스터드)
 local HORN_SOUND = "rbxasset://sounds/bass.wav"
 local HORN_PITCH = 0.5
 local FANFARE_SOUND = "rbxasset://sounds/victory.wav"
+local ALERT_SOUND = "rbxasset://sounds/electronicpingshort.wav"
+local ALERT_PITCH = 1.8 -- 종소리와 헷갈리지 않게 높고 빠르게 두 번(임시)
+local ALERT_REPEAT_GAP = 0.15
 local SPLASH_SOUND = "rbxasset://sounds/impact_water.mp3"
 local SPLASH_COLOR = Color3.fromRGB(220, 240, 255)
 local SPLASH_SIZE = 6 -- 물보라가 퍼지는 지름(스터드). 임시 모양
@@ -129,7 +132,9 @@ function FxController.start()
 
 	local fx = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Fx") :: RemoteEvent
 	fx.OnClientEvent:Connect(function(name: string, ...)
-		print(`Fx {name}`, ...)
+		-- 개발용 흔적이다. 모형이 인자로 오면(HugAlert) 이름만 찍는다. S31에서 지운다
+		local first = ...
+		print(`Fx {name}`, if typeof(first) == "Instance" then first.Name else first)
 		if name == "Bell" then
 			oneShot(BELL_SOUND, mast, nil, BELL_VOLUME)
 		elseif name == "Place" then
@@ -140,6 +145,10 @@ function FxController.start()
 			oneShot(HORN_SOUND, hull, HORN_PITCH)
 		elseif name == "Splash" then
 			splash(... :: Vector3)
+		elseif name == "HugAlert" then
+			-- 내 상자가 끌어안겼다(HG-6). 서버가 주인에게만 보낸다. 화살표는 HudController가 그린다
+			oneShot(ALERT_SOUND, workspace, ALERT_PITCH, BELL_VOLUME)
+			task.delay(ALERT_REPEAT_GAP, oneShot, ALERT_SOUND, workspace, ALERT_PITCH, BELL_VOLUME)
 		elseif name == "Fanfare" then
 			-- 이번 배 1등에게 팡파르(SC-8). 모두에게 들린다
 			oneShot(FANFARE_SOUND, workspace)
