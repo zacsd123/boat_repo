@@ -31,6 +31,8 @@ local COLUMNS = {
 	"goldSlot", "goldPickedAt", "goldPlacedAt", "goldWeight", "goldResult",
 	"totals", -- 배가 끝난 뒤의 총점. 슬롯:총점 을 | 로 이음(S23)
 	"match", -- 판 번호(S23). 판이 끝나면 "MATCH,판 번호,판의 길이(초)" 한 줄이 따로 찍힌다
+	"botStuck", -- 봇이 끼어서 옮겨진 횟수(S25)
+	"botHugTries", "botHugSuccess", "botReclaims", -- 끌어안기와 되찾기 가운데 봇이 한 것(S27). 사람의 것은 전체에서 뺀다
 }
 
 type PersonLog = { crates: number, still: number, falls: number, lost: number }
@@ -59,6 +61,10 @@ type Round = {
 	goldPlacedAt: number?,
 	goldWeight: number?,
 	goldSank: boolean,
+	botStuck: number,
+	botHugTries: number,
+	botHugSuccess: number,
+	botReclaims: number,
 }
 type Row = {
 	length: number,
@@ -102,14 +108,19 @@ end
 
 -- Loading에 들어갈 때. 숨은 한계와 간격은 서버 안에서만 넘어온다
 function Telemetry.beginRound(info: { match: number, boat: number, p: number, lo: number, hi: number, limit: number, gap1: number, gap2: number })
-	local humans = #Players:GetPlayers()
+	local humans = ParticipantService.humanCount()
+	local bots = #ParticipantService.players() - humans
 	current = {
 		startedAt = now(),
 		match = info.match,
 		boat = info.boat,
 		p = info.p,
 		humans = humans,
-		bots = 0, -- 봇은 S25
+		bots = bots,
+		botStuck = 0,
+		botHugTries = 0,
+		botHugSuccess = 0,
+		botReclaims = 0,
 		lo = info.lo,
 		hi = info.hi,
 		limit = info.limit,
@@ -175,21 +186,35 @@ function Telemetry.repicked(player: Player)
 	round.repicks += 1
 end
 
--- 끌어안기가 시작됐다
-function Telemetry.hugStarted()
+-- 끌어안기가 시작됐다. byBot은 봇이 한 것인지
+function Telemetry.hugStarted(byBot: boolean?)
 	local round = current
 	if round then
 		round.hugTries += 1
+		if byBot then
+			round.botHugTries += 1
+		end
+	end
+end
+
+-- 봇이 끼어서 다음 길목으로 옮겨졌다(S25)
+function Telemetry.botStuck()
+	local round = current
+	if round then
+		round.botStuck += 1
 	end
 end
 
 -- 끌어안기가 3초를 채워 상자가 버려졌다. 주인이 잃은 점수를 적는다
-function Telemetry.hugCompleted(ownerSlot: number?, score: number)
+function Telemetry.hugCompleted(ownerSlot: number?, score: number, byBot: boolean?)
 	local round = current
 	if round == nil then
 		return
 	end
 	round.hugSuccess += 1
+	if byBot then
+		round.botHugSuccess += 1
+	end
 	local log = ownerSlot and round.people[ownerSlot]
 	if log then
 		log.lost += score
@@ -197,10 +222,13 @@ function Telemetry.hugCompleted(ownerSlot: number?, score: number)
 end
 
 -- 되찾기 한 번(끌어안던 사람 한 명마다)
-function Telemetry.reclaimed()
+function Telemetry.reclaimed(byBot: boolean?)
 	local round = current
 	if round then
 		round.reclaims += 1
+		if byBot then
+			round.botReclaims += 1
+		end
 	end
 end
 
@@ -242,7 +270,8 @@ function Telemetry.watch(dt: number)
 		local character = player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 		local log = person(player)
-		if root == nil or log == nil then
+		-- 봇은 재지 않는다. 종 뒤에 늘 서 있어서 사람의 값을 흐린다
+		if root == nil or log == nil or ParticipantService.isBot(player) then
 			continue
 		end
 		local anchor = stillAnchor[player]
@@ -344,6 +373,8 @@ function Telemetry.endRound(result: string, sinkerSlot: number?, weight: number,
 		if round.goldSlot == nil then "" elseif round.goldPlacedAt == nil then "none" elseif round.goldSank then "sank" else "held",
 		table.concat(totals, "|"),
 		tostring(round.match),
+		tostring(round.botStuck),
+		tostring(round.botHugTries), tostring(round.botHugSuccess), tostring(round.botReclaims),
 	}
 	print("TELEMETRY," .. table.concat(values, ","))
 	table.insert(rows, {

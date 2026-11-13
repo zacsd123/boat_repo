@@ -30,6 +30,7 @@ local phaseEnteredAt = 0 -- 실제로 단계에 들어간 서버 시각. 길이 
 local boatIndex = 0 -- 이번 판의 몇 번째 배인지
 local listeners: { (newPhase: string?, oldPhase: string?) -> () } = {}
 local endingListeners: { (sank: boolean) -> () } = {}
+local beforeLoadingListeners: { () -> () } = {}
 local sinkerSlot: number? = nil -- 이번 배를 가라앉힌 참가자(S11에서 점수에 쓴다)
 local sank = false -- 이번 배가 가라앉았는지. 마지막 배는 단계 이름(FinalShow)으로 가를 수 없어서 따로 적는다
 
@@ -120,6 +121,10 @@ local function onEnter(newPhase: string)
 	elseif newPhase == Phase.Loading then
 		-- P는 라운드가 시작되는 이 순간 한 번만 센다(JN-5). 라운드 도중에는 다시 세지 않는다.
 		-- 기록은 늘 새로 시작하고, 시험할 때만 DEBUG_FORCE_P로 바꾼다
+		-- 봇은 Loading에 들어가기 직전, P를 세기 전에 넣고 뺀다(S25)
+		for _, listener in beforeLoadingListeners do
+			listener()
+		end
 		local counted = ParticipantService.beginRound()
 		local p = DevTools.forcedP() or counted
 		BoatService.startRound(p)
@@ -187,6 +192,11 @@ end
 -- Loading이 끝나는 순간, 점수를 굳히기 전에 부를 함수를 건다. sank는 침몰로 끝났는지(출항이나 모두 나감이면 false)
 function RoundService.onRoundEnding(listener: (sank: boolean) -> ())
 	table.insert(endingListeners, listener)
+end
+
+-- Loading에 들어가기 직전(P를 세기 전)에 부를 함수를 건다. 봇을 넣고 빼는 때다
+function RoundService.onBeforeLoading(listener: () -> ())
+	table.insert(beforeLoadingListeners, listener)
 end
 
 function RoundService.getPhase(): string?

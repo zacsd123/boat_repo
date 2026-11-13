@@ -50,10 +50,10 @@ local function start(crate: Model, hugger: Player?, huggerSlot: number)
 	crate:SetAttribute("HugEndsAt", endsAt)
 	-- 주인에게만 알린다(HG-6)
 	local owner = ownerSlot and ParticipantService.playerOf(ownerSlot)
-	if owner then
+	if owner and not ParticipantService.isBot(owner) then
 		fx:FireClient(owner, "HugAlert", crate)
 	end
-	Telemetry.hugStarted()
+	Telemetry.hugStarted(hugger ~= nil and ParticipantService.isBot(hugger))
 end
 
 -- 꾹 누르기가 "끌어안기"로 끝났다. 조건(단계, 상태, 갑판, 거리, 아무도 끌어안고 있지 않음)은
@@ -99,7 +99,8 @@ function HugService.endHug(crate: Model, reason: HugRules.EndReason)
 	if result.crate == "Removed" then
 		if reason == Reason.Completed then
 			local kind = crate:GetAttribute("Kind") :: string?
-			Telemetry.hugCompleted(hug.ownerSlot, if kind then Config.CRATE_SCORE[kind] or 0 else 0)
+			local byBot = hug.hugger ~= nil and ParticipantService.isBot(hug.hugger)
+			Telemetry.hugCompleted(hug.ownerSlot, if kind then Config.CRATE_SCORE[kind] or 0 else 0, byBot)
 		end
 		-- 무게와 주인 점수를 다시 더한다. 주인이 나가서 이미 치워진 상자면 아무 일도 없다
 		CrateService.removeCrate(crate)
@@ -150,7 +151,7 @@ function HugService.reclaim(player: Player, rootPart: BasePart)
 	for _, crate in targets do
 		local body = crate.PrimaryPart
 		HugService.endHug(crate, Reason.Reclaimed)
-		Telemetry.reclaimed()
+		Telemetry.reclaimed(ParticipantService.isBot(player))
 		if body then
 			fx:FireAllClients("Reclaim", body.Position)
 		end

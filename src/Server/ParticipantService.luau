@@ -1,6 +1,6 @@
 --!strict
 -- 참가자 등록부, 슬롯과 색, 상태. 캐릭터의 기본(통과, 점프 없음, 걷는 속도, 나타나는 자리, 안전망).
--- 상자 치우기(S13), P 세기(S13), 봇(S25)은 뒤 단계에서 넓힌다.
+-- 참가자는 사람(Player)이거나 봇이다(S25). 봇도 같은 표와 같은 참가자 기록을 쓴다. players()는 둘 다 돌려준다.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -29,6 +29,9 @@ local leavingListeners: { (player: Player, slot: number) -> () } = {}
 local joinedListeners: { (player: Player, slot: number) -> () } = {}
 -- 새 참가자의 시작 총점을 정하는 함수(S24). MatchService가 건다. 걸리기 전에는 0이다
 local startTotal: ((userId: number) -> number)? = nil
+local botOf: { [Player]: boolean } = {} -- 봇인 참가자(S25)
+local botSerial = 0 -- 봇에게 주는 일련번호. 계정 번호 자리에 음수로 넣어 사람과 겹치지 않게 한다
+local botFolder: Instance -- Workspace.Bots. 봇의 몸이 여기 있다
 
 local spawnSlots: Instance -- Map.Beach.SpawnSlots
 local seaFloor: BasePart -- Map.Sea.Floor
@@ -98,35 +101,66 @@ local function setUpCharacter(player: Player, character: Model)
 	end
 end
 
-local function onPlayerAdded(player: Player)
+-- 참가자 하나를 등록한다. 사람과 봇이 같은 자리(슬롯, 색, 참가자 기록)를 쓴다(GP-14).
+-- botKind를 주면 봇이다
+local function register(member: Player, botKind: string?): number?
 	local slot = freeSlot()
 	if slot == nil then
-		warn(`참가자 슬롯이 없다: {player.Name}`)
-		return
+		warn(`참가자 슬롯이 없다: {member.Name}`)
+		return nil
 	end
-	slotOfPlayer[player] = slot
-	playerInSlot[slot] = player
-	joinedAt[player] = workspace:GetServerTimeNow()
-	print(`참가자 들어옴: {player.Name} → 슬롯 {slot}`)
+	slotOfPlayer[member] = slot
+	playerInSlot[slot] = member
+	joinedAt[member] = workspace:GetServerTimeNow()
+	print(`참가자 들어옴: {member.Name} → 슬롯 {slot}{if botKind then ` (봇 {botKind})` else ""}`)
 
 	local record = Instance.new("Folder")
 	record.Name = tostring(slot)
-	record:SetAttribute("IsBot", false)
-	record:SetAttribute("UserId", player.UserId)
+	record:SetAttribute("IsBot", botKind ~= nil)
+	record:SetAttribute("BotKind", botKind or "") -- 봇의 종류. 겉모습을 가르는 데만 쓴다(S27)
+	record:SetAttribute("UserId", member.UserId)
 	record:SetAttribute("Color", Config.PARTICIPANT_COLORS[slot])
 	record:SetAttribute("State", Types.ParticipantState.Empty)
 	record:SetAttribute("Carrying", "")
 	record:SetAttribute("BoatScore", 0)
-	-- 도중에 들어온 사람은 그 순간 가장 낮은 총점에서 시작한다(JN-1). 값은 MatchService가 정한다
-	record:SetAttribute("TotalScore", if startTotal then startTotal(player.UserId) else 0)
+	-- 도중에 들어온 참가자는 그 순간 가장 낮은 총점에서 시작한다(JN-1). 값은 MatchService가 정한다
+	record:SetAttribute("TotalScore", if startTotal then startTotal(member.UserId) else 0)
 	record:SetAttribute("Hat", false)
 	record:SetAttribute("Crown", false)
 	record.Parent = ReplicatedStorage:WaitForChild("Participants")
-	recordOf[player] = record
+	recordOf[member] = record
 	for _, listener in joinedListeners do
-		listener(player, slot)
+		listener(member, slot)
 	end
+	return slot
+end
 
+-- 참가자 하나를 지운다. 기록을 지우기 전에 든 상자와 갑판의 상자를 먼저 치운다(JN-2).
+-- 순서가 바뀌면 주인 없는 상자가 남는다
+local function unregister(member: Player)
+	local slot = slotOfPlayer[member]
+	print(`참가자 나감: {member.Name} (슬롯 {slot})`)
+	if slot == nil then
+		return
+	end
+	ParticipantService.cleanupFor(member)
+	slotOfPlayer[member] = nil
+	playerInSlot[slot] = nil
+	recordOf[member] = nil
+	joinedAt[member] = nil
+	hadInput[member] = nil
+	startPosition[member] = nil
+	botOf[member] = nil
+	local record = ReplicatedStorage:WaitForChild("Participants"):FindFirstChild(tostring(slot))
+	if record then
+		record:Destroy()
+	end
+end
+
+local function onPlayerAdded(player: Player)
+	if register(player, nil) == nil then
+		return
+	end
 	player.CharacterAdded:Connect(function(character)
 		setUpCharacter(player, character)
 	end)
@@ -136,23 +170,58 @@ local function onPlayerAdded(player: Player)
 end
 
 local function onPlayerRemoving(player: Player)
-	local slot = slotOfPlayer[player]
-	print(`참가자 나감: {player.Name} (슬롯 {slot})`)
+	unregister(player)
+end
+
+-- 봇을 참가자로 넣는다(S25). 봇은 Player가 아니지만, 사람과 같은 서버 함수를 지나도록
+-- Player와 같은 이름의 값(Name, UserId, Character)을 가진 표를 만들어 사람과 같은 자리에 넣는다.
+-- 그래서 서비스들의 인자 타입은 그대로 Player다. 진짜 Player에만 있는 것(FireClient 같은 것)을 쓰기 전에는 isBot으로 가른다.
+-- character는 BotService가 만든 봇의 몸이다. 슬롯이 없으면 nil
+function ParticipantService.addBot(kind: string, character: Model): Player?
+	botSerial += 1
+	local member = ({ Name = `Bot{botSerial}`, UserId = -botSerial, Character = character } :: any) :: Player
+	botOf[member] = true
+	local slot = register(member, kind)
 	if slot == nil then
+		botOf[member] = nil
+		return nil
+	end
+	character.Name = tostring(slot) -- 클라이언트가 슬롯 번호로 봇의 몸을 찾는다
+	character.Parent = botFolder
+	setUpCharacter(member, character)
+	-- 봇의 물리는 서버가 맡는다. 가까운 사람의 클라이언트로 넘어가면 그 사람의 통신 상태에 따라 버벅인다
+	local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if rootPart then
+		rootPart:SetNetworkOwner(nil)
+	end
+	return member
+end
+
+-- 봇을 뺀다. 그 봇의 상자와 기록이 사람이 나갈 때와 같이 치워지고, 몸도 사라진다
+function ParticipantService.removeBot(member: Player)
+	if not botOf[member] then
 		return
 	end
-	-- 기록을 지우기 전에 든 상자와 갑판의 상자를 먼저 치운다(JN-2). 순서가 바뀌면 주인 없는 상자가 남는다
-	ParticipantService.cleanupFor(player)
-	slotOfPlayer[player] = nil
-	playerInSlot[slot] = nil
-	recordOf[player] = nil
-	joinedAt[player] = nil
-	hadInput[player] = nil
-	startPosition[player] = nil
-	local record = ReplicatedStorage:WaitForChild("Participants"):FindFirstChild(tostring(slot))
-	if record then
-		record:Destroy()
+	local character = member.Character
+	unregister(member)
+	if character then
+		character:Destroy()
 	end
+end
+
+function ParticipantService.isBot(member: Player): boolean
+	return botOf[member] == true
+end
+
+-- 사람 참가자의 수(봇은 뺀다)
+function ParticipantService.humanCount(): number
+	local count = 0
+	for member in slotOfPlayer do
+		if not botOf[member] then
+			count += 1
+		end
+	end
+	return count
 end
 
 -- 안전망: 바다 바닥보다 아래로 빠진 캐릭터는 슬롯 자리로 되돌린다.
@@ -220,7 +289,8 @@ function ParticipantService.beginRound(): number
 	for player in slotOfPlayer do
 		local justJoined = roundStartedAt == nil or (joinedAt[player] or 0) > (roundStartedAt :: number)
 		local input = hadInput[player] == true
-		table.insert(counted, { isBot = false, hadInput = input, justJoined = justJoined })
+		-- 봇은 늘 "입력이 있었던" 참가자다(JN-5)
+		table.insert(counted, { isBot = botOf[player] == true, hadInput = input, justJoined = justJoined })
 		if not input and not justJoined then
 			table.insert(idle, player.Name)
 		end
@@ -320,6 +390,7 @@ function ParticipantService.start()
 	local map = workspace:WaitForChild("Map")
 	spawnSlots = map:WaitForChild("Beach"):WaitForChild("SpawnSlots")
 	seaFloor = map:WaitForChild("Sea"):WaitForChild("Floor") :: BasePart
+	botFolder = workspace:WaitForChild("Bots")
 
 	setUpCollisionGroups()
 	setUpStarterPlayer()

@@ -484,7 +484,9 @@ function CrateService.handleTap(player: Player, target: any)
 		hooks.reclaim(player, rootPart)
 	elseif action == "Hint" then
 		-- 되찾을 것이 없다. "여기는 꾹 눌러야 한다"만 그 사람에게 알린다(IN-4)
-		fx:FireClient(player, "HoldHint")
+		if not ParticipantService.isBot(player) then
+			fx:FireClient(player, "HoldHint")
+		end
 	else
 		local reason = `단계 {situation.phase}, 상태 {state}`
 		if situation.phase == Phase.Loading and state == State.Empty and not situation.onDeck then

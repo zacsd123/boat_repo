@@ -37,7 +37,8 @@ local function totals(except: Player?): { [string]: number }
 	local result: { [string]: number } = {}
 	for _, player in ParticipantService.players() do
 		local slot = ParticipantService.slotOf(player)
-		if slot and player ~= except then
+		-- 기록이 아직 없는 참가자(지금 막 들어오는 중)는 뺀다. 넣으면 그 사람의 0이 "가장 낮은 총점"이 된다
+		if slot and player ~= except and ParticipantService.recordOf(player) ~= nil then
 			result[tostring(slot)] = totalOf(player)
 		end
 	end
@@ -172,7 +173,8 @@ function MatchService.start()
 	-- 나간 사람은 총점과 순위에서 바로 빠진다. 왕관은 남은 사람 가운데 다시 정한다.
 	-- 같은 판에 다시 들어올 때를 위해 나가기 전 총점을 판이 끝날 때까지 적어 둔다(GP-20)
 	ParticipantService.onLeaving(function(player)
-		if not inFinal then
+		-- 빼는 봇의 총점은 버린다(S25)
+		if not inFinal and not ParticipantService.isBot(player) then
 			leftTotals[player.UserId] = totalOf(player)
 		end
 		MatchService.refreshCrowns(player)

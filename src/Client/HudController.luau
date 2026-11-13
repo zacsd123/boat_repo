@@ -372,12 +372,54 @@ local HAT_SIZE = Vector3.new(0.5, 1.6, 1.6) -- 눕힌 원기둥: 두께, 지름,
 local CROWN_SIZE = Vector3.new(0.35, 1.2, 1.2)
 local GOLD_COLOR = Color3.fromRGB(255, 205, 50)
 local COUNT_TIME = 1.5 -- 마지막 배 점수가 총점에 더해지며 숫자가 올라가는 시간(초)
+-- 봇의 머리 위 톱니 그림(PL-3). 종류마다 색이 다르다(S27). 글자는 쓰지 않는다
+local BOT_MARK = "BotMark"
+local BOT_MARK_SIZE = UDim2.fromOffset(26, 26)
+local BOT_MARK_COLOR: { [string]: Color3 } = {
+	Porter = Color3.fromRGB(205, 205, 210), -- 나르는 봇
+	Saboteur = Color3.fromRGB(225, 70, 60), -- 버리는 봇
+	Timid = Color3.fromRGB(80, 150, 235), -- 지키는 봇
+}
+
+-- 톱니: 돌려 놓은 막대 넷 위에 둥근 판, 가운데 구멍
+local function buildBotMark(head: BasePart, color: Color3)
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = BOT_MARK
+	billboard.Adornee = head
+	billboard.StudsOffset = Vector3.new(0, 1.5, 0)
+	billboard.Size = BOT_MARK_SIZE
+	billboard.AlwaysOnTop = true
+	for index = 0, 3 do
+		local tooth = Instance.new("Frame")
+		tooth.AnchorPoint = Vector2.new(0.5, 0.5)
+		tooth.Position = UDim2.fromScale(0.5, 0.5)
+		tooth.Size = UDim2.fromScale(1, 0.26)
+		tooth.Rotation = index * 45
+		tooth.BackgroundColor3 = color
+		tooth.BorderSizePixel = 0
+		tooth.Parent = billboard
+	end
+	for _, spec in { { scale = 0.74, color = color }, { scale = 0.3, color = Color3.fromRGB(30, 30, 30) } } do
+		local disc = Instance.new("Frame")
+		disc.AnchorPoint = Vector2.new(0.5, 0.5)
+		disc.Position = UDim2.fromScale(0.5, 0.5)
+		disc.Size = UDim2.fromScale(spec.scale, spec.scale)
+		disc.BackgroundColor3 = spec.color
+		disc.BorderSizePixel = 0
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0.5, 0)
+		corner.Parent = disc
+		disc.Parent = billboard
+	end
+	billboard.Parent = head
+end
 
 function HudController.startHeads(boat: Instance)
 	local participants = game:GetService("ReplicatedStorage"):WaitForChild("Participants")
 	local fx = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Fx") :: RemoteEvent
 	local sinkerSlot: number? = nil -- 이번 배를 가라앉힌 슬롯. 다음 배가 들어오면 지운다
 	local phaseSince = os.clock() -- 지금 단계에 들어온 때(이 클라이언트가 본 때)
+	local botFolder = workspace:WaitForChild("Bots") -- 봇의 몸. 이름이 슬롯 번호다(S25)
 
 	local function playerOf(record: Instance): Player?
 		for _, player in Players:GetPlayers() do
@@ -386,6 +428,18 @@ function HudController.startHeads(boat: Instance)
 			end
 		end
 		return nil
+	end
+
+	-- 참가자의 머리. 사람은 캐릭터에서, 봇은 Workspace.Bots의 슬롯 이름으로 찾는다
+	local function headOf(record: Instance): BasePart?
+		local character: Instance? = nil
+		if record:GetAttribute("IsBot") == true then
+			character = botFolder:FindFirstChild(record.Name)
+		else
+			local player = playerOf(record)
+			character = player and player.Character
+		end
+		return character and character:FindFirstChild("Head") :: BasePart?
 	end
 
 	-- 머리 위에 얹는 것(모자, 왕관). lift는 머리 꼭대기에서 띄우는 높이
@@ -413,11 +467,13 @@ function HudController.startHeads(boat: Instance)
 	end
 
 	local function render(record: Instance)
-		local player = playerOf(record)
-		local character = player and player.Character
-		local head = character and character:FindFirstChild("Head") :: BasePart?
+		local head = headOf(record)
 		if head == nil then
 			return
+		end
+		if record:GetAttribute("IsBot") == true and head:FindFirstChild(BOT_MARK) == nil then
+			local kind = (record:GetAttribute("BotKind") :: string?) or ""
+			buildBotMark(head, BOT_MARK_COLOR[kind] or BOT_MARK_COLOR.Porter)
 		end
 
 		local billboard = head:FindFirstChild(HEAD_SCORE) :: BillboardGui?
@@ -501,6 +557,14 @@ function HudController.startHeads(boat: Instance)
 	for _, record in participants:GetChildren() do
 		watch(record)
 	end
+	-- 봇의 몸은 참가자 기록보다 늦게 올 수 있다. 몸이 오면 그 슬롯을 다시 그린다
+	botFolder.ChildAdded:Connect(function(body)
+		body:WaitForChild("Head", 5)
+		local record = participants:FindFirstChild(body.Name)
+		if record then
+			render(record)
+		end
+	end)
 
 	fx.OnClientEvent:Connect(function(name: string, slot: any)
 		if name == "Sink" then
