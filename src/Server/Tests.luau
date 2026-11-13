@@ -25,10 +25,12 @@ local SCORE = Config.CRATE_SCORE
 local LO4, HI4 = Config.limitRange(4)
 local CAP = Config.FIRST_BELL_CAP[Types.ShipSize.Normal]
 
+-- 끌어안기는 켠 것으로 시험한다. Config의 스위치를 꺼도(S21) 규칙 시험은 그대로 통과해야 한다.
+-- 껐을 때는 T43이 따로 본다
 local HOLD: InputRules.HoldSettings = {
 	holdTime = Config.HOLD_TIME,
 	holdTolerance = Config.HOLD_TOLERANCE,
-	hugEnabled = Config.HUG_ENABLED,
+	hugEnabled = true,
 }
 
 -- 기대와 다르면 오류를 낸다. 오류 글은 run이 시험 번호와 함께 모은다

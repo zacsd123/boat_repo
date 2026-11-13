@@ -228,6 +228,20 @@ function DevTools.ghostHug(crateId: number): boolean
 	return crate ~= nil and HugService.beginGhost(crate)
 end
 
+-- 그 상자의 끌어안기를 주어진 이유로 끝낸다(S19, S20). 사람이 둘 있어야 생기는 끝(되찾기, 이탈)을 혼자 시험할 때 쓴다.
+-- 이유는 HugRules.Reason의 이름이다. 실제와 같은 HugService.endHug를 지난다
+function DevTools.endHug(crateId: number, reason: string): boolean
+	if not RunService:IsStudio() then return false end
+	local CrateService = require(script.Parent.CrateService) :: any
+	local HugService = require(script.Parent.HugService) :: any
+	local crate = CrateService.findCrate(crateId)
+	if crate == nil then
+		return false
+	end
+	HugService.endHug(crate, reason)
+	return true
+end
+
 -- 첫 플레이어(또는 player)를 가까운 물 자리로 던져 넣는다(S12)
 function DevTools.throwIn(player: Player?)
 	if not RunService:IsStudio() then return end

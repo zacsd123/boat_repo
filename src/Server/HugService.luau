@@ -10,7 +10,9 @@ local RunService = game:GetService("RunService")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Types = require(ReplicatedStorage.Shared.Types)
 local HugRules = require(ReplicatedStorage.Shared.Rules.HugRules)
+local InputRules = require(ReplicatedStorage.Shared.Rules.InputRules)
 local ParticipantService = require(script.Parent.ParticipantService)
+local BoatService = require(script.Parent.BoatService)
 local CrateService = require(script.Parent.CrateService)
 local WaterService = require(script.Parent.WaterService)
 local Telemetry = require(script.Parent.Telemetry)
@@ -31,6 +33,7 @@ type Hug = {
 local GHOST_SLOT = 0
 
 local hugs: { [Model]: Hug } = {}
+local nextReclaimAt: { [Player]: number } = {} -- 되찾기를 다시 쓸 수 있는 서버 시각(RC-3)
 local fx: RemoteEvent
 
 local function now(): number
@@ -101,9 +104,63 @@ function HugService.endHug(crate: Model, reason: HugRules.EndReason)
 		CrateService.removeCrate(crate)
 	end
 
-	-- 3초가 찼으면 물 자리로 던져 넣는다(GP-8)
-	if hugger ~= nil and result.hugger == "InWater" and reason == Reason.Completed then
+	-- 3초가 찼거나 되찾기를 당했으면 물 자리로 던져 넣는다(GP-8).
+	-- 침몰은 갑판 위의 다른 사람과 함께 WaterService가 물에 빠뜨린다
+	if hugger ~= nil and result.hugger == "InWater" and (reason == Reason.Completed or reason == Reason.Reclaimed) then
 		WaterService.throwIn(hugger)
+	end
+end
+
+-- 그 사람이 지금 되찾을 수 있는 상자들: 끌어안긴 내 상자 가운데 손 닿는 거리 안의 것(RC-1, RC-2).
+-- 빈손이고 갑판 위이고 재사용 대기가 끝났는지는 InputRules.canReclaim이 본다(RC-3, RC-4).
+-- 거리는 주인과 상자 사이를 서버가 잰다(주인과 끌어안는 사람 사이가 아니다)
+local function reclaimTargets(player: Player, rootPart: BasePart): { Model }
+	local targets: { Model } = {}
+	local slot = ParticipantService.slotOf(player)
+	local state = ParticipantService.stateOf(player)
+	if slot == nil or state == nil then
+		return targets
+	end
+	local onDeck = BoatService.isOnDeck(rootPart.Position)
+	local allowedAt = nextReclaimAt[player] or 0
+	for crate, hug in hugs do
+		if hug.ownerSlot == slot and crate.Parent ~= nil then
+			local distance = CrateService.distanceTo(rootPart, crate)
+			if InputRules.canReclaim(state, onDeck, distance, now(), allowedAt, Config.RECLAIM_RANGE) then
+				table.insert(targets, crate)
+			end
+		end
+	end
+	return targets
+end
+
+function HugService.reclaimable(player: Player, rootPart: BasePart): boolean
+	return #reclaimTargets(player, rootPart) > 0
+end
+
+-- 되찾기(RC-1). 손 닿는 거리에서 내 상자를 끌어안고 있던 모두에게 한 번에 적용된다(RC-2).
+-- 상자는 제자리에 남고 무게와 점수는 바뀌지 않는다. 끌어안던 사람만 물에 빠진다
+function HugService.reclaim(player: Player, rootPart: BasePart)
+	local targets = reclaimTargets(player, rootPart)
+	if #targets == 0 then
+		return
+	end
+	nextReclaimAt[player] = now() + Config.RECLAIM_COOLDOWN
+	for _, crate in targets do
+		local body = crate.PrimaryPart
+		HugService.endHug(crate, Reason.Reclaimed)
+		Telemetry.reclaimed()
+		if body then
+			fx:FireAllClients("Reclaim", body.Position)
+		end
+	end
+end
+
+-- 라운드가 끝나는 순간(출항 또는 침몰). 진행 중이던 끌어안기는 모두 무효다(HG-7).
+-- 점수를 굳히기 전에 부른다. 순서가 뒤집히면 "3초가 찬 것으로" 처리될 수 있다
+function HugService.endAll(reason: HugRules.EndReason)
+	for crate in hugs do
+		HugService.endHug(crate, reason)
 	end
 end
 
@@ -134,10 +191,8 @@ function HugService.start()
 	fx = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Fx") :: RemoteEvent
 	CrateService.setHugHooks({
 		begin = HugService.begin,
-		reclaimable = function()
-			return false -- 되찾기는 S19
-		end,
-		reclaim = function() end,
+		reclaimable = HugService.reclaimable,
+		reclaim = HugService.reclaim,
 	})
 	RunService.Heartbeat:Connect(step)
 end

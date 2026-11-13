@@ -40,6 +40,8 @@ local LOOK: { [string]: Look } = {
 	DropGold = { color = Color3.fromRGB(210, 60, 60), raised = false, cross = true, ring = false },
 	Repick = { color = Color3.fromRGB(60, 60, 60), raised = false, cross = false, ring = true },
 	Hug = { color = Color3.fromRGB(60, 60, 60), raised = false, cross = false, ring = true },
+	-- 되찾기: 눈에 띄는 주황 바탕에 들어 올린 상자. 누르는 순간 된다(GP-19)
+	Reclaim = { color = Color3.fromRGB(245, 140, 30), raised = true, cross = false, ring = false },
 }
 local RING_COLOR: { [string]: Color3 } = {
 	Repick = WHITE, -- 내 상자는 흰 고리(IN-6)
@@ -360,13 +362,28 @@ function InputController.start()
 			crateTarget = nearestCrate(rootPart.Position)
 		end
 
+		-- 끌어안긴 내 상자가 RECLAIM_RANGE 안에 있으면 누르는 순간 되찾기다(GP-19).
+		-- 재사용 대기는 서버만 안다. 대기 중에 누르면 서버가 힌트로 답한다
+		local reclaimable = false
+		if state == State.Empty and onDeck and phase == Phase.Loading then
+			for _, crate in cargo:GetChildren() do
+				if crate:GetAttribute("OwnerSlot") == mySlot and crate:GetAttribute("HuggedBySlot") ~= nil and crate:IsA("Model") then
+					local body = bodyOf(crate)
+					if body and flatDistance(rootPart.Position, body.Position) <= Config.RECLAIM_RANGE then
+						reclaimable = true
+						break
+					end
+				end
+			end
+		end
+
 		local now: InputRules.Situation = {
 			phase = phase,
 			state = state,
 			onDeck = onDeck,
 			carrying = carrying,
 			pickupInReach = pileTarget ~= nil,
-			reclaimable = false,
+			reclaimable = reclaimable,
 		}
 		situation = now
 
@@ -402,7 +419,7 @@ function InputController.start()
 
 		-- 버튼 그림: 꾹 눌러야 하는 대상 앞이면 고리, 아니면 톡 누르기가 될 일
 		local picture: string = InputRules.tap(now)
-		if holdAction ~= "None" and LOOK[holdAction] ~= nil then
+		if not reclaimable and holdAction ~= "None" and LOOK[holdAction] ~= nil then
 			picture = holdAction
 		end
 		if button and button.Parent then
