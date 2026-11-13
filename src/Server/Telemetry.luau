@@ -29,12 +29,14 @@ local COLUMNS = {
 	"hugTries", "hugSuccess", "reclaims", "repicks", -- 끌어안기 시작, 3초를 채운 것, 되찾기, 다시 들기(S21)
 	-- 황금 상자(S22): 처음 든 슬롯, 든 때, 갑판에 놓은 때와 그때의 무게, 결과(held 버팀, sank 침몰, none 못 놓음)
 	"goldSlot", "goldPickedAt", "goldPlacedAt", "goldWeight", "goldResult",
-	"totals", -- S23에서 채운다
+	"totals", -- 배가 끝난 뒤의 총점. 슬롯:총점 을 | 로 이음(S23)
+	"match", -- 판 번호(S23). 판이 끝나면 "MATCH,판 번호,판의 길이(초)" 한 줄이 따로 찍힌다
 }
 
 type PersonLog = { crates: number, still: number, falls: number, lost: number }
 type Round = {
 	startedAt: number,
+	match: number,
 	boat: number,
 	p: number,
 	humans: number,
@@ -99,10 +101,11 @@ local function fmt(value: number?): string
 end
 
 -- Loading에 들어갈 때. 숨은 한계와 간격은 서버 안에서만 넘어온다
-function Telemetry.beginRound(info: { boat: number, p: number, lo: number, hi: number, limit: number, gap1: number, gap2: number })
+function Telemetry.beginRound(info: { match: number, boat: number, p: number, lo: number, hi: number, limit: number, gap1: number, gap2: number })
 	local humans = #Players:GetPlayers()
 	current = {
 		startedAt = now(),
+		match = info.match,
 		boat = info.boat,
 		p = info.p,
 		humans = humans,
@@ -304,6 +307,7 @@ function Telemetry.endRound(result: string, sinkerSlot: number?, weight: number,
 	current = nil
 	local endAt = now() - round.startedAt
 	local people = {}
+	local totals = {}
 	local stills = {}
 	local slots = {}
 	for slot in round.people do
@@ -316,6 +320,10 @@ function Telemetry.endRound(result: string, sinkerSlot: number?, weight: number,
 		local score = record and record:GetAttribute("BoatScore") or 0
 		table.insert(people, `{slot}:{score}:{log.crates}:{fmt(log.still)}:{log.falls}:{log.lost}`)
 		table.insert(stills, log.still)
+		-- 총점은 이 배의 점수를 더한 뒤의 값이다(MatchService가 먼저 더한다). 나간 사람은 기록이 없어 빠진다
+		if record then
+			table.insert(totals, `{slot}:{record:GetAttribute("TotalScore") or 0}`)
+		end
 	end
 	local oneMoreTotal = 0
 	for _, n in round.oneMore do
@@ -334,7 +342,8 @@ function Telemetry.endRound(result: string, sinkerSlot: number?, weight: number,
 		if round.goldSlot then tostring(round.goldSlot) else "", fmt(round.goldPickedAt), fmt(round.goldPlacedAt),
 		if round.goldWeight then tostring(round.goldWeight) else "",
 		if round.goldSlot == nil then "" elseif round.goldPlacedAt == nil then "none" elseif round.goldSank then "sank" else "held",
-		"",
+		table.concat(totals, "|"),
+		tostring(round.match),
 	}
 	print("TELEMETRY," .. table.concat(values, ","))
 	table.insert(rows, {

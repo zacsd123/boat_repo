@@ -26,6 +26,9 @@ local roundStartedAt: number? = nil -- 지난(지금) 라운드가 시작된 서
 local hadInput: { [Player]: boolean } = {} -- 이번 라운드에 입력이 있었는지
 local startPosition: { [Player]: Vector3? } = {} -- 이번 라운드가 시작될 때 캐릭터가 있던 자리
 local leavingListeners: { (player: Player, slot: number) -> () } = {}
+local joinedListeners: { (player: Player, slot: number) -> () } = {}
+-- 새 참가자의 시작 총점을 정하는 함수(S24). MatchService가 건다. 걸리기 전에는 0이다
+local startTotal: ((userId: number) -> number)? = nil
 
 local spawnSlots: Instance -- Map.Beach.SpawnSlots
 local seaFloor: BasePart -- Map.Sea.Floor
@@ -114,9 +117,15 @@ local function onPlayerAdded(player: Player)
 	record:SetAttribute("State", Types.ParticipantState.Empty)
 	record:SetAttribute("Carrying", "")
 	record:SetAttribute("BoatScore", 0)
+	-- 도중에 들어온 사람은 그 순간 가장 낮은 총점에서 시작한다(JN-1). 값은 MatchService가 정한다
+	record:SetAttribute("TotalScore", if startTotal then startTotal(player.UserId) else 0)
 	record:SetAttribute("Hat", false)
+	record:SetAttribute("Crown", false)
 	record.Parent = ReplicatedStorage:WaitForChild("Participants")
 	recordOf[player] = record
+	for _, listener in joinedListeners do
+		listener(player, slot)
+	end
 
 	player.CharacterAdded:Connect(function(character)
 		setUpCharacter(player, character)
@@ -178,6 +187,16 @@ end
 -- 참가자가 나가기 직전(기록이 아직 있을 때) 부를 함수를 건다
 function ParticipantService.onLeaving(listener: (player: Player, slot: number) -> ())
 	table.insert(leavingListeners, listener)
+end
+
+-- 참가자 기록이 만들어진 직후 부를 함수를 건다
+function ParticipantService.onJoined(listener: (player: Player, slot: number) -> ())
+	table.insert(joinedListeners, listener)
+end
+
+-- 새 참가자의 시작 총점을 정하는 함수를 건다(S24)
+function ParticipantService.setStartTotal(rule: (userId: number) -> number)
+	startTotal = rule
 end
 
 local function rootPosition(player: Player): Vector3?

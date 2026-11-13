@@ -578,7 +578,7 @@ function CrateService.start()
 			dropAllCarried()
 		end
 		-- 실린 상자는 정산이 끝날 때(배가 다시 들어올 때) 치운다
-		if newPhase == Phase.Arriving or newPhase == nil then
+		if newPhase == Phase.Arriving or newPhase == Phase.MatchIntro or newPhase == nil then
 			CrateService.clearDeck()
 		end
 	end)

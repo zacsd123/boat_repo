@@ -197,8 +197,9 @@ function WaterService.start()
 	fx = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Fx") :: RemoteEvent
 
 	-- 침몰하면 갑판 위 사람은 모두 물에 빠진다(WT-4). 배가 내려가며 바다 바닥에 서게 된다
-	RoundService.onPhaseChanged(function(newPhase)
-		if newPhase ~= Phase.Sinking then
+	-- 마지막 배의 침몰은 단계가 Sinking이 아니라 FinalShow라서, 단계 이름이 아니라 "가라앉았는지"로 본다
+	RoundService.onPhaseChanged(function(_, oldPhase)
+		if oldPhase ~= Phase.Loading or not RoundService.didSink() then
 			return
 		end
 		for _, player in ParticipantService.players() do

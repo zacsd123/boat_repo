@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local ScoreRules = require(ReplicatedStorage.Shared.Rules.ScoreRules)
 local ParticipantService = require(script.Parent.ParticipantService)
+local DevTools = require(script.Parent.DevTools)
 
 local ScoreService = {}
 
@@ -76,6 +77,12 @@ function ScoreService.freeze(sinkerSlot: number?)
 		return
 	end
 	lastScores = currentScores(sinkerSlot)
+	-- 시험용: DevTools로 넣어 둔 배 점수가 있으면 그 값으로 굳힌다(Studio에서만, 한 번 쓰고 지워진다)
+	for slot, score in DevTools.takeForcedBoatScores() do
+		if lastScores[slot] ~= nil then
+			lastScores[slot] = score
+		end
+	end
 	write(lastScores)
 	frozen = true
 	local text = {}
@@ -84,6 +91,11 @@ function ScoreService.freeze(sinkerSlot: number?)
 	end
 	table.sort(text)
 	print(`배 점수 굳힘: {table.concat(text, ", ")}{if sinkerSlot then ` (가라앉힌 사람 슬롯 {sinkerSlot})` else ""}`)
+end
+
+-- 굳힌 배 점수(슬롯 문자열 → 점수). 총점에 더할 때 MatchService에 넘긴다
+function ScoreService.frozenScores(): { [string]: number }
+	return table.clone(lastScores)
 end
 
 -- Scoring에 들어갈 때. 이번 배 1등에게 팡파르와 선장 모자(SC-6, SC-8). 가장 높은 점수가 0이면 없다.

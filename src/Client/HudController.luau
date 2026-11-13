@@ -358,18 +358,26 @@ function HudController.startOwnerSummary(boat: Instance)
 	end
 end
 
--- 머리 위 숫자(UI-3)와 선장 모자(SC-6). 참가자 기록의 BoatScore, Hat, Color만 보고 그린다.
--- 침몰한 배의 정산 동안 가라앉힌 사람 머리 위에는 큰 0(UI-6). 모양은 디자인 전 임시
+-- 머리 위 숫자(UI-3), 선장 모자(SC-6), 왕관(SC-7). 참가자 기록의 BoatScore, TotalScore, Hat, Crown, Color만 보고 그린다.
+-- 침몰한 배의 정산 동안 가라앉힌 사람 머리 위에는 큰 0(UI-6).
+-- 마지막 배에서는 2배로 계산한 값을 금색으로(GP-17), 최종 결과에서는 총점을 크게 보여 준다(FL-8). 모양은 디자인 전 임시
 local HEAD_SCORE = "HeadScore"
 local CAPTAIN_HAT = "CaptainHat"
+local CROWN = "Crown"
 local SCORE_SIZE = UDim2.fromOffset(90, 44)
 local BIG_ZERO_SIZE = UDim2.fromOffset(170, 96)
+local TOTAL_SIZE = UDim2.fromOffset(170, 96) -- 최종 결과의 총점
 local HAT_COLOR = Color3.fromRGB(25, 25, 35)
+local HAT_SIZE = Vector3.new(0.5, 1.6, 1.6) -- 눕힌 원기둥: 두께, 지름, 지름
+local CROWN_SIZE = Vector3.new(0.35, 1.2, 1.2)
+local GOLD_COLOR = Color3.fromRGB(255, 205, 50)
+local COUNT_TIME = 1.5 -- 마지막 배 점수가 총점에 더해지며 숫자가 올라가는 시간(초)
 
 function HudController.startHeads(boat: Instance)
 	local participants = game:GetService("ReplicatedStorage"):WaitForChild("Participants")
 	local fx = game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("Fx") :: RemoteEvent
 	local sinkerSlot: number? = nil -- 이번 배를 가라앉힌 슬롯. 다음 배가 들어오면 지운다
+	local phaseSince = os.clock() -- 지금 단계에 들어온 때(이 클라이언트가 본 때)
 
 	local function playerOf(record: Instance): Player?
 		for _, player in Players:GetPlayers() do
@@ -378,6 +386,30 @@ function HudController.startHeads(boat: Instance)
 			end
 		end
 		return nil
+	end
+
+	-- 머리 위에 얹는 것(모자, 왕관). lift는 머리 꼭대기에서 띄우는 높이
+	local function ornament(head: BasePart, name: string, show: boolean, color: Color3, size: Vector3, lift: number)
+		local existing = head:FindFirstChild(name)
+		if show and existing == nil then
+			local part = Instance.new("Part")
+			part.Name = name
+			part.Shape = Enum.PartType.Cylinder
+			part.Size = size
+			part.Color = color
+			part.CanCollide = false
+			part.CanQuery = false
+			part.CanTouch = false
+			part.Massless = true
+			part.CFrame = head.CFrame * CFrame.new(0, head.Size.Y / 2 + lift + size.X / 2, 0) * CFrame.Angles(0, 0, math.rad(90))
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = head
+			weld.Part1 = part
+			weld.Parent = part
+			part.Parent = head
+		elseif not show and existing then
+			existing:Destroy()
+		end
 	end
 
 	local function render(record: Instance)
@@ -408,32 +440,40 @@ function HudController.startHeads(boat: Instance)
 		end
 		local label = (billboard :: BillboardGui):FindFirstChild("Score") :: TextLabel
 		local phase = boat:GetAttribute("Phase")
+		local lastBoat = ((boat:GetAttribute("BoatIndex") :: number?) or 0) >= Config.BOATS_PER_MATCH
+		local boatScore = (record:GetAttribute("BoatScore") :: number?) or 0
+		local total = (record:GetAttribute("TotalScore") :: number?) or 0
+		local ownColor = (record:GetAttribute("Color") :: Color3?) or Color3.new(1, 1, 1)
 		local isSinker = sinkerSlot ~= nil and tonumber(record.Name) == sinkerSlot
-			and (phase == "Sinking" or phase == "Scoring")
-		label.Text = tostring(record:GetAttribute("BoatScore") or 0)
-		label.TextColor3 = (record:GetAttribute("Color") :: Color3?) or Color3.new(1, 1, 1)
-		;(billboard :: BillboardGui).Size = if isSinker then BIG_ZERO_SIZE else SCORE_SIZE
+			and (phase == "Sinking" or phase == "Scoring" or phase == "FinalShow")
 
-		local hat: Instance? = head:FindFirstChild(CAPTAIN_HAT)
-		if record:GetAttribute("Hat") == true and hat == nil then
-			local newHat = Instance.new("Part")
-			newHat.Name = CAPTAIN_HAT
-			newHat.Shape = Enum.PartType.Cylinder
-			newHat.Size = Vector3.new(0.5, 1.6, 1.6)
-			newHat.Color = HAT_COLOR
-			newHat.CanCollide = false
-			newHat.CanQuery = false
-			newHat.CanTouch = false
-			newHat.Massless = true
-			newHat.CFrame = head.CFrame * CFrame.new(0, head.Size.Y / 2 + newHat.Size.X / 2, 0) * CFrame.Angles(0, 0, math.rad(90))
-			local weld = Instance.new("WeldConstraint")
-			weld.Part0 = head
-			weld.Part1 = newHat
-			weld.Parent = newHat
-			newHat.Parent = head
-		elseif record:GetAttribute("Hat") ~= true and hat then
-			hat:Destroy()
+		local shown = boatScore
+		local color = ownColor
+		local size = if isSinker then BIG_ZERO_SIZE else SCORE_SIZE
+		if phase == "FinalPodium" then
+			-- 전원의 총점을 큰 숫자로
+			shown = total
+			size = TOTAL_SIZE
+		elseif phase == "FinalLastScore" then
+			-- 마지막 배의 점수가 총점에 더해지는 것을 보여 준다: 더하기 전 값에서 총점까지 올라간다
+			local added = boatScore * Config.LAST_BOAT_MULTIPLIER
+			local progress = math.clamp((os.clock() - phaseSince) / COUNT_TIME, 0, 1)
+			shown = math.floor(total - added + added * progress + 0.5)
+			color = GOLD_COLOR
+			size = TOTAL_SIZE
+		elseif lastBoat then
+			-- 마지막 배: 2배로 계산한 값을 금색으로. 글 없이 2배를 알린다(GP-17)
+			shown = boatScore * Config.LAST_BOAT_MULTIPLIER
+			color = GOLD_COLOR
 		end
+		label.Text = tostring(shown)
+		label.TextColor3 = color
+		;(billboard :: BillboardGui).Size = size
+
+		local hasHat = record:GetAttribute("Hat") == true
+		ornament(head, CAPTAIN_HAT, hasHat, HAT_COLOR, HAT_SIZE, 0)
+		-- 왕관은 모자 위에 얹는다(모자가 없어도 같은 높이)
+		ornament(head, CROWN, record:GetAttribute("Crown") == true, GOLD_COLOR, CROWN_SIZE, HAT_SIZE.X)
 	end
 
 	local function renderAll()
@@ -443,7 +483,7 @@ function HudController.startHeads(boat: Instance)
 	end
 
 	local function watch(record: Instance)
-		for _, name in { "BoatScore", "Hat", "Color" } do
+		for _, name in { "BoatScore", "TotalScore", "Hat", "Crown", "Color" } do
 			record:GetAttributeChangedSignal(name):Connect(function()
 				render(record)
 			end)
@@ -469,10 +509,19 @@ function HudController.startHeads(boat: Instance)
 		end
 	end)
 	boat:GetAttributeChangedSignal("Phase"):Connect(function()
-		if boat:GetAttribute("Phase") == "Arriving" then
+		local phase = boat:GetAttribute("Phase")
+		phaseSince = os.clock()
+		if phase == "Arriving" or phase == "MatchIntro" then
 			sinkerSlot = nil
 		end
 		renderAll()
+	end)
+	boat:GetAttributeChangedSignal("BoatIndex"):Connect(renderAll)
+	-- 숫자가 올라가는 동안에는 매 프레임 다시 그린다
+	RunService.RenderStepped:Connect(function()
+		if boat:GetAttribute("Phase") == "FinalLastScore" and os.clock() - phaseSince <= COUNT_TIME + 0.1 then
+			renderAll()
+		end
 	end)
 end
 

@@ -6,6 +6,8 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Config = require(ReplicatedStorage.Shared.Config)
+
 local FxController = {}
 
 local CREAK_SOUND = "rbxasset://sounds/action_footsteps_plastic.mp3"
@@ -40,6 +42,7 @@ local GOLD_PITCH = 1.6 -- 팡파르와 헷갈리지 않게 높고 짧게(임시)
 local GOLD_PILLAR_HEIGHT = 40 -- 황금 상자 위에 서는 빛기둥(스터드). 임시 모양
 local GOLD_PILLAR_WIDTH = 0.8
 local GOLD_PILLAR_COLOR = Color3.fromRGB(255, 220, 80)
+local GOLD_SAIL_COLOR = Color3.fromRGB(255, 205, 50) -- 마지막 배의 돛(임시)
 
 local function oneShot(id: string, parent: Instance, pitch: number?, volume: number?)
 	local sound = Instance.new("Sound")
@@ -244,6 +247,16 @@ function FxController.start()
 	end
 	boat:GetAttributeChangedSignal("BellCount"):Connect(refreshBells)
 	refreshBells()
+
+	-- 마지막 배는 금빛 돛을 달고 온다(FL-7). 들어올 때부터 금색이다
+	local sail = mast:WaitForChild("Sail") :: BasePart
+	local plainSail = sail.Color
+	local function refreshSail()
+		local index = (boat:GetAttribute("BoatIndex") :: number?) or 0
+		sail.Color = if index >= Config.BOATS_PER_MATCH then GOLD_SAIL_COLOR else plainSail
+	end
+	boat:GetAttributeChangedSignal("BoatIndex"):Connect(refreshSail)
+	refreshSail()
 end
 
 return FxController

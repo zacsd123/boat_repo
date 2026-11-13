@@ -19,7 +19,6 @@ local WaterService = require(script.Parent.WaterService)
 local Telemetry = require(script.Parent.Telemetry)
 
 local State = Types.ParticipantState
-local Phase = Types.Phase
 local Reason = HugRules.Reason
 
 local HugService = {}
@@ -211,9 +210,9 @@ function HugService.start()
 		reclaim = HugService.reclaim,
 	})
 	ParticipantService.onLeaving(onLeaving)
-	RoundService.onRoundEnding(function(newPhase)
+	RoundService.onRoundEnding(function(sank)
 		-- 침몰이면 갑판 위의 다른 사람과 함께 물에 빠지고, 그 밖에는(출항, 모두 나감) 선착장에 내린다
-		HugService.endAll(if newPhase == Phase.Sinking then Reason.Sank else Reason.Departed)
+		HugService.endAll(if sank then Reason.Sank else Reason.Departed)
 	end)
 	RunService.Heartbeat:Connect(step)
 end

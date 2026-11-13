@@ -58,11 +58,58 @@ function DevTools.force(name: string, value: any): string
 	return `force {name} = {tostring(value)}`
 end
 
--- 지금 배를 버리고 다음 배를 바로 들인다(Arriving부터). 시험용 값을 바꾼 뒤 새 라운드를 빨리 시작할 때 쓴다
+-- 지금 배를 버리고 다음 배를 바로 들인다(Arriving부터). 시험용 값을 바꾼 뒤 새 라운드를 빨리 시작할 때 쓴다.
+-- 배 번호는 그대로 둔다(판의 배 수를 넘기지 않는다)
 function DevTools.nextBoat()
 	if not RunService:IsStudio() then return end
 	local RoundService = require(script.Parent.RoundService) :: any
+	RoundService.setBoatIndex(RoundService.getBoatIndex() - 1)
 	RoundService.setPhase("Arriving")
+end
+
+-- 배 번호를 건너뛴다(S23). 지금 배를 버리고 n번째 배를 바로 들인다
+--   game.ServerStorage.DevCommand:Invoke("skipToBoat", 7)
+function DevTools.skipToBoat(n: number)
+	if not RunService:IsStudio() then return end
+	local RoundService = require(script.Parent.RoundService) :: any
+	RoundService.setBoatIndex(n - 1)
+	RoundService.setPhase("Arriving")
+end
+
+-- 참가자의 총점을 원하는 값으로 넣는다(S23). 왕관도 다시 정한다
+function DevTools.setTotal(slot: number, total: number): boolean
+	if not RunService:IsStudio() then return false end
+	local record = game:GetService("ReplicatedStorage").Participants:FindFirstChild(tostring(slot))
+	if record == nil then
+		return false
+	end
+	record:SetAttribute("TotalScore", total)
+	local MatchService = require(script.Parent.MatchService) :: any
+	MatchService.refreshCrowns()
+	return true
+end
+
+-- 지금 그 계정이 들어온다면 받을 시작 총점(S24). 실제로 들어올 때와 같은 함수에 묻는다
+function DevTools.startTotalFor(userId: number): number
+	if not RunService:IsStudio() then return -1 end
+	local MatchService = require(script.Parent.MatchService) :: any
+	return MatchService.startTotalFor(userId)
+end
+
+-- 참가자의 이번 배 점수를 원하는 값으로 넣는다(S23). 배가 끝나 점수를 굳힐 때 이 값이 쓰이고, 한 번 쓰면 지워진다
+local forcedBoatScores: { [string]: number } = {}
+function DevTools.setBoatScore(slot: number, score: number)
+	if not RunService:IsStudio() then return end
+	forcedBoatScores[tostring(slot)] = score
+end
+
+function DevTools.takeForcedBoatScores(): { [string]: number }
+	local taken = forcedBoatScores
+	forcedBoatScores = {}
+	if not RunService:IsStudio() then
+		return {}
+	end
+	return taken
 end
 
 -- 점이 구역 상자 안에 있는지
