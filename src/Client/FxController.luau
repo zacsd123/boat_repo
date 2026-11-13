@@ -35,6 +35,11 @@ local SPLASH_COLOR = Color3.fromRGB(220, 240, 255)
 local SPLASH_SIZE = 6 -- 물보라가 퍼지는 지름(스터드). 임시 모양
 local SPLASH_TIME = 0.4 -- 물보라가 퍼지고 사라지는 시간(초). 임시 모양
 local BELL_ON_COLOR = Color3.fromRGB(255, 210, 60)
+local GOLD_SOUND = "rbxasset://sounds/victory.wav"
+local GOLD_PITCH = 1.6 -- 팡파르와 헷갈리지 않게 높고 짧게(임시)
+local GOLD_PILLAR_HEIGHT = 40 -- 황금 상자 위에 서는 빛기둥(스터드). 임시 모양
+local GOLD_PILLAR_WIDTH = 0.8
+local GOLD_PILLAR_COLOR = Color3.fromRGB(255, 220, 80)
 
 local function oneShot(id: string, parent: Instance, pitch: number?, volume: number?)
 	local sound = Instance.new("Sound")
@@ -74,6 +79,27 @@ local function splash(at: Vector3)
 		end)
 	end)
 	tween:Play()
+end
+
+-- 갑판 밖에 놓인 황금 상자 위에 빛기둥을 세운다(S22). 상자가 치워지면 함께 사라진다
+local function goldPillar(crate: Instance)
+	local body = crate:WaitForChild("Body", 5) :: BasePart?
+	if body == nil then
+		return
+	end
+	local pillar = Instance.new("Part")
+	pillar.Name = "Pillar"
+	pillar.Anchored = true
+	pillar.CanCollide = false
+	pillar.CanQuery = false
+	pillar.CanTouch = false
+	pillar.CastShadow = false
+	pillar.Material = Enum.Material.Neon
+	pillar.Color = GOLD_PILLAR_COLOR
+	pillar.Transparency = 0.5
+	pillar.Size = Vector3.new(GOLD_PILLAR_WIDTH, GOLD_PILLAR_HEIGHT, GOLD_PILLAR_WIDTH)
+	pillar.CFrame = CFrame.new(body.Position + Vector3.new(0, GOLD_PILLAR_HEIGHT / 2, 0))
+	pillar.Parent = crate
 end
 
 -- 침몰 연출 1차(S14): 배 자리에서 물기둥이 솟고, 화면이 흔들리고, 침몰 소리와 0점 소리
@@ -146,6 +172,9 @@ function FxController.start()
 			oneShot(HORN_SOUND, hull, HORN_PITCH)
 		elseif name == "Splash" then
 			splash(... :: Vector3)
+		elseif name == "Gold" then
+			-- 첫 종과 함께 바위 위에 황금 상자가 나타났다(GD-1). 빛기둥은 아래에서 상자를 보고 세운다
+			oneShot(GOLD_SOUND, workspace, GOLD_PITCH)
 		elseif name == "Reclaim" then
 			-- 주인이 상자를 되찾았다(RC-1). 끌어안던 사람은 서버가 물 자리로 던진다
 			oneShot(RECLAIM_SOUND, hull)
@@ -158,6 +187,12 @@ function FxController.start()
 			oneShot(FANFARE_SOUND, workspace)
 		end
 	end)
+
+	local loose = workspace.Map:WaitForChild("Loose")
+	loose.ChildAdded:Connect(goldPillar)
+	for _, crate in loose:GetChildren() do
+		task.spawn(goldPillar, crate)
+	end
 
 	-- 삐걱 소리
 	local creak = Instance.new("Sound")

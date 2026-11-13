@@ -18,6 +18,7 @@ local fx: RemoteEvent
 local random = Random.new()
 
 local bells: BellRules.Bells? = nil
+local firstBellListeners: { () -> () } = {}
 local loadingStartedAt = 0 -- 이번 Loading이 시작된 서버 시각
 
 local function now(): number
@@ -34,6 +35,17 @@ end
 local function ring(number: number)
 	boat:SetAttribute("BellCount", number)
 	fx:FireAllClients("Bell", number)
+	-- 첫 종과 함께 일어나는 일(황금 상자, S22). 띠 때문이든 상한 때문이든 여기를 지난다
+	if number == 1 then
+		for _, listener in firstBellListeners do
+			listener()
+		end
+	end
+end
+
+-- 첫 종이 울리는 순간 부를 함수를 건다
+function BellService.onFirstBell(listener: () -> ())
+	table.insert(firstBellListeners, listener)
 end
 
 -- Loading에 들어갈 때. 간격은 이때 뽑아 넣어 둔다

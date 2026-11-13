@@ -190,6 +190,7 @@ function InputController.start()
 	local deckZone = map:WaitForChild("Zones"):WaitForChild("DeckZone") :: BasePart
 	local beach = map:WaitForChild("Beach")
 	local stacks = beach:WaitForChild("PileStacks")
+	local loose = map:WaitForChild("Loose") -- 갑판 밖에 놓여 있는 황금 상자(S22)
 	local spots: { [string]: BasePart } = {}
 	for _, kind in PILE_KINDS do
 		spots[kind] = beach:WaitForChild("Pile" .. kind) :: BasePart
@@ -209,7 +210,8 @@ function InputController.start()
 	highlight.Parent = playerGui
 
 	local button: ImageButton? = nil
-	local pileTarget: string? = nil -- 해변에서의 대상(더미 종류)
+	local pileTarget: string? = nil -- 갑판 밖에서의 대상(더미 종류 또는 황금 상자)
+	local goldTarget: Model? = nil -- 대상이 황금 상자일 때 그 모형
 	local crateTarget: Model? = nil -- 갑판에서의 대상(실린 상자)
 	local holdAction: InputRules.HoldAction = "None" -- 대상 상자를 꾹 누르면 될 일
 	local situation: InputRules.Situation? = nil -- 지난 프레임에 본 상황
@@ -347,6 +349,7 @@ function InputController.start()
 
 		-- 빈손이고 갑판 밖이면 TARGET_RANGE 안에서 가장 가까운 더미
 		pileTarget = nil
+		goldTarget = nil
 		crateTarget = nil
 		holdAction = "None"
 		if state == State.Empty and not onDeck then
@@ -356,6 +359,19 @@ function InputController.start()
 				if distance <= Config.TARGET_RANGE and distance < best then
 					best = distance
 					pileTarget = kind
+				end
+			end
+			-- 놓여 있는 황금 상자도 들 것이다(IN-3). 더미와 견주어 더 가까운 쪽이 대상이다
+			local gold = loose:FindFirstChild("GoldCrate")
+			if gold and gold:IsA("Model") then
+				local goldBody = bodyOf(gold)
+				if goldBody then
+					local distance = flatDistance(rootPart.Position, goldBody.Position)
+					if distance <= Config.TARGET_RANGE and distance < best then
+						best = distance
+						pileTarget = Kind.Gold
+						goldTarget = gold
+					end
 				end
 			end
 		elseif state == State.Empty and onDeck and phase == Phase.Loading then
@@ -397,7 +413,11 @@ function InputController.start()
 				covered = false,
 			}, Config.HOLD_TIME, HOLD_SETTINGS)
 		end
-		highlight.Adornee = if target then target elseif pileTarget then stacks:FindFirstChild(pileTarget) else nil
+		highlight.Adornee = if target
+			then target
+			elseif goldTarget then goldTarget
+			elseif pileTarget then stacks:FindFirstChild(pileTarget)
+			else nil
 
 		-- 꾹 누르는 중: 고리를 채우고, 다 차면 떼기를 기다리지 않고 HoldEnd를 보낸다. 대상에서 멀어지면 취소한다
 		local current = holding

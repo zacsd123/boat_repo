@@ -15,6 +15,7 @@ local RoundService = require(script.Parent.RoundService)
 local BoatService = require(script.Parent.BoatService)
 local BellService = require(script.Parent.BellService)
 local ScoreService = require(script.Parent.ScoreService)
+local GoldService = require(script.Parent.GoldService)
 local Telemetry = require(script.Parent.Telemetry)
 
 local Phase = Types.Phase
@@ -59,6 +60,13 @@ end
 local function rootPartOf(player: Player): BasePart?
 	local character = player.Character
 	return character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+end
+
+-- 캐릭터가 서 있는 바닥의 점
+local function feetOf(player: Player, rootPart: BasePart): Vector3
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	return rootPart.Position - Vector3.new(0, rootPart.Size.Y / 2 + (if humanoid then humanoid.HipHeight else 0), 0)
 end
 
 -- 모형의 모든 파트를 한꺼번에 설정한다
@@ -200,6 +208,9 @@ local function placeOnDeck(player: Player, rootPart: BasePart)
 	ScoreService.recompute() -- 머리 위 숫자가 놓는 순간 오른다
 	-- 무게를 다시 더한 바로 다음 줄에서 판정한다(BT-6). 가라앉힌 사람은 이 상자를 놓은 참가자다
 	local result = BoatService.onPlaced()
+	if kind == Kind.Gold and result then
+		Telemetry.goldPlaced(BoatService.deckWeight(), result.sank)
+	end
 	-- 첫 종이 침몰보다 먼저다. 같은 상자에서 둘이 함께 날 수 있다(BL-5)
 	if result and result.touchedBand then
 		BellService.firstBell()
@@ -437,10 +448,14 @@ function CrateService.handleTap(player: Player, target: any)
 		return
 	end
 
+	-- 들 것: 더미 셋 가운데 하나, 또는 갑판 밖에 놓여 있는 황금 상자(IN-3)
 	local kind = pileKind(target)
+	local wantsGold = target == Kind.Gold
 	local pileDistance: number? = nil
 	if kind ~= nil then
 		pileDistance = flatDistance(rootPart.Position, pileSpots[kind].Position)
+	elseif wantsGold then
+		pileDistance = GoldService.distanceFrom(rootPart.Position)
 	end
 
 	local situation = situationOf(player, rootPart, state)
@@ -451,10 +466,20 @@ function CrateService.handleTap(player: Player, target: any)
 
 	if action == "Place" then
 		placeOnDeck(player, rootPart)
-	elseif action == "Discard" or action == "DropGold" then
-		dropCarried(player) -- 황금 상자를 그 자리에 남기는 것은 S22
+	elseif action == "Discard" then
+		dropCarried(player)
+	elseif action == "DropGold" then
+		-- 황금 상자는 그 자리 바닥에 남아 누구든 집을 수 있다(GD-3)
+		dropCarried(player)
+		GoldService.dropAt(feetOf(player, rootPart))
 	elseif action == "Pickup" and kind ~= nil then
 		pickUp(player, kind, rootPart)
+	elseif action == "Pickup" and wantsGold then
+		-- 둘이 함께 눌러도 먼저 처리된 쪽이 가져가면 다음 Tap에는 놓여 있는 상자가 없다(CR-10)
+		if GoldService.take() then
+			pickUp(player, Kind.Gold, rootPart)
+			Telemetry.goldPicked(player)
+		end
 	elseif action == "Reclaim" and hooks ~= nil then
 		hooks.reclaim(player, rootPart)
 	elseif action == "Hint" then
@@ -463,7 +488,9 @@ function CrateService.handleTap(player: Player, target: any)
 	else
 		local reason = `단계 {situation.phase}, 상태 {state}`
 		if situation.phase == Phase.Loading and state == State.Empty and not situation.onDeck then
-			if kind == nil then
+			if wantsGold then
+				reason = `황금 상자가 없거나 TARGET_RANGE({Config.TARGET_RANGE}) 밖`
+			elseif kind == nil then
 				reason = `대상이 더미가 아님({tostring(target)})`
 			else
 				reason = `대상 더미 {kind}가 TARGET_RANGE({Config.TARGET_RANGE}) 밖(거리 {string.format("%.1f", pileDistance or 0)})`
@@ -473,9 +500,13 @@ function CrateService.handleTap(player: Player, target: any)
 	end
 end
 
--- 손에 든 상자를 없애고 빈손으로(물에 들어가 놓친 상자, CR-9)
+-- 손에 든 상자를 없애고 빈손으로(물에 들어가 놓친 상자, CR-9). 황금 상자는 바위로 돌아간다(GD-4)
 function CrateService.dropCarried(player: Player)
+	local wasGold = ParticipantService.carryingOf(player) == Kind.Gold
 	dropCarried(player)
+	if wasGold then
+		GoldService.returnToRock()
+	end
 end
 
 -- 손에 든 상자를 모두 없앤다(CR-11)
@@ -517,6 +548,10 @@ function CrateService.start()
 		local model = carried[player]
 		if model then
 			model:Destroy()
+			-- 황금 상자를 든 채 나가면 바위로 돌아간다. 라운드에 하나뿐인 상자가 함께 사라지지 않게(S22에서 정함)
+			if ParticipantService.carryingOf(player) == Kind.Gold then
+				GoldService.returnToRock()
+			end
 		end
 		carried[player] = nil
 		lastTapAt[player] = nil
