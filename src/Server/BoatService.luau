@@ -35,6 +35,21 @@ local retracting: RBXScriptConnection? = nil
 local moving: Tween? = nil
 
 local round: BoatRules.Boat? = nil -- 이번 라운드의 배. 숨은 한계가 들어 있다
+-- 이번 배가 비었을 때 수면에서 갑판 턱까지의 높이(S28). 보통 배는 HULL_FREEBOARD이고,
+-- 작은 배와 큰 배는 범위의 위 끝에 비례한다. 그래야 무게 1당 가라앉는 깊이가 세 배에서 같다
+local freeboard = Config.HULL_FREEBOARD
+
+-- 이 배의 크기와 인원에 맞는 높이를 정한다
+local function setFreeboard(shipSize: string?, p: number)
+	local _, hi = Config.limitRange(p, shipSize)
+	local _, normalHi = Config.limitRange(p)
+	freeboard = Config.HULL_FREEBOARD * hi / normalHi
+end
+
+-- 이 배가 비었을 때 Root의 자리. 맵에 놓인 자리(보통 배)에서 높이만 다르다
+local function shipBerth(): CFrame
+	return berth * CFrame.new(0, freeboard - Config.HULL_FREEBOARD, 0)
+end
 
 -- 배다리의 윗면이 선착장 머리 끝과 갑판 입구를 잇도록 다시 놓는다.
 -- 걷히는 중에는 선착장 쪽 끝이 그대로이고, 배 쪽 끝이 선착장 쪽으로 다가온다
@@ -122,18 +137,18 @@ end
 
 -- 무게 w일 때 배가 내려간 깊이. 위 끝에서 갑판 턱이 수면에 닿는다(BT-3)
 local function depthAt(w: number, hi: number): number
-	return Config.HULL_FREEBOARD * w / hi
+	return freeboard * w / hi
 end
 
--- 빨간 띠: 갑판 턱(선체 맨 위)에서 아래로 HULL_FREEBOARD × (1 − lo ÷ hi)
+-- 빨간 띠: 갑판 턱(선체 맨 위)에서 아래로 (비었을 때의 높이) × (1 − lo ÷ hi). 세 크기에서 높이가 같다(S28)
 local function drawBand(lo: number, hi: number)
-	local lipTop = Config.HULL_FREEBOARD - rootAboveWater
-	setSpan(redBand, lipTop - Config.HULL_FREEBOARD * (1 - lo / hi), lipTop)
+	local lipTop = Config.HULL_FREEBOARD - rootAboveWater -- Root에서 갑판 턱까지. 선체의 모양이라 크기와 무관하다
+	setSpan(redBand, lipTop - freeboard * (1 - lo / hi), lipTop)
 end
 
 -- 젖은 자국: 빈 배의 물높이에서 최고 무게의 물높이까지(BT-5)
 local function drawWetMark(mark: number, hi: number)
-	local emptyWater = -rootAboveWater
+	local emptyWater = -(rootAboveWater + freeboard - Config.HULL_FREEBOARD)
 	setSpan(wetMark, emptyWater, emptyWater + depthAt(mark, hi))
 end
 
@@ -143,7 +158,7 @@ local function settleHeight()
 	if current == nil or not docked then
 		return
 	end
-	local target = berth * CFrame.new(0, -depthAt(current.weight, current.hi), 0)
+	local target = shipBerth() * CFrame.new(0, -depthAt(current.weight, current.hi), 0)
 	moveRoot(target, Config.BOAT_MOVE_TIME)
 end
 
@@ -174,10 +189,11 @@ function BoatService.drawLimit(lo: number, hi: number): number
 	return random:NextInteger(lo, hi)
 end
 
--- Loading에 들어갈 때. P로 범위를 정하고 숨은 한계를 뽑고, 무게와 젖은 자국을 0으로.
+-- Loading에 들어갈 때. P와 배 크기로 범위를 정하고 숨은 한계를 뽑고, 무게와 젖은 자국을 0으로.
 -- 한계는 이 모듈의 지역 변수(round)에만 있다. 속성, 값 객체, 원격 이벤트에 두지 않는다
-function BoatService.startRound(p: number)
-	local lo, hi = Config.limitRange(p)
+function BoatService.startRound(p: number, shipSize: string?)
+	setFreeboard(shipSize, p) -- 들어올 때는 어림한 인원으로 그렸다. 센 인원으로 다시 맞춘다
+	local lo, hi = Config.limitRange(p, shipSize)
 	local limit = DevTools.forcedLimit() or BoatService.drawLimit(lo, hi)
 	if DevTools.shouldPrintLimit() then
 		print(`숨은 한계 {limit} (범위 {lo}~{hi}, P={p})`)
@@ -237,15 +253,21 @@ function BoatService.setAway()
 	root.CFrame = away
 end
 
--- 바다 쪽에서 선착장 옆자리로 들어온다. 다 오면 배다리가 붙는다
-function BoatService.sailIn(duration: number)
+-- 바다 쪽에서 선착장 옆자리로 들어온다. 다 오면 배다리가 붙는다.
+-- 배의 크기는 이때 선체와 빨간 띠의 높이로 드러난다(VR-2). p는 어림한 인원이다(P는 Loading에서 센다)
+function BoatService.sailIn(duration: number, shipSize: string?, p: number)
 	setDocked(false)
 	round = nil
+	setFreeboard(shipSize, p)
+	local lo, hi = Config.limitRange(p, shipSize)
 	boatModel:SetAttribute("Weight", 0)
 	boatModel:SetAttribute("MarkWeight", 0)
+	boatModel:SetAttribute("RangeLo", lo)
+	boatModel:SetAttribute("RangeHi", hi)
+	drawBand(lo, hi)
 	drawWetMark(0, 1)
-	root.CFrame = away
-	moveRoot(berth, duration, function()
+	root.CFrame = away * CFrame.new(0, freeboard - Config.HULL_FREEBOARD, 0)
+	moveRoot(shipBerth(), duration, function()
 		setDocked(true)
 	end)
 end
@@ -282,7 +304,7 @@ end
 function BoatService.sink(duration: number)
 	setDocked(false)
 	local hull = boatModel:FindFirstChild("Hull") :: BasePart
-	moveRoot(berth * CFrame.new(0, -(Config.HULL_FREEBOARD + hull.Size.Y), 0), duration)
+	moveRoot(shipBerth() * CFrame.new(0, -(freeboard + hull.Size.Y), 0), duration)
 end
 
 -- 점이 갑판 구역 안인지(GP-11)

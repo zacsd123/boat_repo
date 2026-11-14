@@ -6,7 +6,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
-local Types = require(ReplicatedStorage.Shared.Types)
 local BellRules = require(ReplicatedStorage.Shared.Rules.BellRules)
 local DevTools = require(script.Parent.DevTools)
 local Telemetry = require(script.Parent.Telemetry)
@@ -48,8 +47,8 @@ function BellService.onFirstBell(listener: () -> ())
 	table.insert(firstBellListeners, listener)
 end
 
--- Loading에 들어갈 때. 간격은 이때 뽑아 넣어 둔다
-function BellService.startRound(startedAt: number, label: string)
+-- Loading에 들어갈 때. 간격은 이때 뽑아 넣어 둔다. firstBellCap은 그 배 크기의 첫 종 상한이다(VR-3)
+function BellService.startRound(startedAt: number, label: string, firstBellCap: number)
 	loadingStartedAt = startedAt
 	local forced = DevTools.forcedBellGaps()
 	local gap1, gap2
@@ -58,7 +57,7 @@ function BellService.startRound(startedAt: number, label: string)
 	else
 		gap1, gap2 = BellService.drawGaps()
 	end
-	bells = BellRules.newBells(Config.FIRST_BELL_CAP[Types.ShipSize.Normal], gap1, gap2)
+	bells = BellRules.newBells(firstBellCap, gap1, gap2)
 	print(`{label} 종 간격 {string.format("%.2f", gap1)}, {string.format("%.2f", gap2)}`)
 	boat:SetAttribute("BellCount", 0)
 end

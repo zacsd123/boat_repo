@@ -191,6 +191,9 @@ local function addCrate(kind: string, slot: number?, near: Vector3): Model
 	weld.Part1 = body
 	weld.Parent = body
 	model.Parent = cargo
+	if layer >= 2 then
+		Telemetry.stacked()
+	end
 	return model
 end
 

@@ -11,6 +11,7 @@ local DEBUG_FORCE_LIMIT: number? = nil -- 숨은 한계를 이 값으로 고정
 local DEBUG_FORCE_BELL_GAPS: { number }? = nil -- 종 간격 둘을 이 값으로 고정
 local DEBUG_FORCE_P: number? = nil -- P를 이 값으로 고정
 local DEBUG_PRINT_LIMIT = false -- 라운드마다 뽑힌 한계를 서버 출력에 찍기
+local DEBUG_FORCE_SIZE: string? = nil -- 배 크기를 이 값으로 고정(S28). "Small", "Normal", "Large"
 local DEBUG_FORCE_HUMANS: number? = nil -- 봇 수를 정할 때 사람 수를 이 값으로 친다(S25). 혼자서 2명, 3명, 4명 판의 봇 구성을 볼 때
 local DEBUG_RUN_TESTS = true -- 서버가 켜질 때 규칙 시험(S03) 돌리기
 
@@ -29,6 +30,11 @@ end
 function DevTools.forcedP(): number?
 	if not RunService:IsStudio() then return nil end
 	return DEBUG_FORCE_P
+end
+
+function DevTools.forcedSize(): string?
+	if not RunService:IsStudio() then return nil end
+	return DEBUG_FORCE_SIZE
 end
 
 function DevTools.forcedHumans(): number?
@@ -56,12 +62,14 @@ function DevTools.force(name: string, value: any): string
 		DEBUG_FORCE_BELL_GAPS = value
 	elseif name == "p" then
 		DEBUG_FORCE_P = value
+	elseif name == "size" then
+		DEBUG_FORCE_SIZE = value
 	elseif name == "humans" then
 		DEBUG_FORCE_HUMANS = value
 	elseif name == "printLimit" then
 		DEBUG_PRINT_LIMIT = value == true
 	else
-		return `force: {name}은 없다(limit, gaps, p, humans, printLimit)`
+		return `force: {name}은 없다(limit, gaps, p, size, humans, printLimit)`
 	end
 	return `force {name} = {tostring(value)}`
 end
@@ -208,11 +216,11 @@ function DevTools.setWeight(target: number): number
 end
 
 -- 숨은 한계를 n번(기본 1,000번) 뽑아 분포를 찍는다. 실제 라운드와 같은 함수로 뽑는다
-function DevTools.limitDistribution(p: number, n: number?): string
+function DevTools.limitDistribution(p: number, n: number?, shipSize: string?): string
 	if not RunService:IsStudio() then return "" end
 	local Config = require(game:GetService("ReplicatedStorage").Shared.Config) :: any
 	local BoatService = require(script.Parent.BoatService) :: any
-	local lo, hi = Config.limitRange(p)
+	local lo, hi = Config.limitRange(p, shipSize)
 	local count = n or 1000
 	local sum, low, high, nonInteger = 0, math.huge, -math.huge, 0
 	local seen: { [number]: number } = {}
@@ -334,6 +342,13 @@ function DevTools.telemetrySummary(): string
 	if not RunService:IsStudio() then return "" end
 	local Telemetry = require(script.Parent.Telemetry) :: any
 	return table.concat(Telemetry.summary(), " / ")
+end
+
+-- 인원(P)별 요약(S29). 한 줄에 한 인원
+function DevTools.telemetryByP(): string
+	if not RunService:IsStudio() then return "" end
+	local Telemetry = require(script.Parent.Telemetry) :: any
+	return table.concat(Telemetry.summaryByP(), "\n")
 end
 
 -- 명령창에서 DevTools를 부르는 입구. 명령창에서 require하면 게임과 다른 모듈 사본이 생겨서

@@ -6,6 +6,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Types = require(ReplicatedStorage.Shared.Types)
 local ScoreRules = require(ReplicatedStorage.Shared.Rules.ScoreRules)
 local JoinRules = require(ReplicatedStorage.Shared.Rules.JoinRules)
 local ParticipantService = require(script.Parent.ParticipantService)
@@ -22,6 +23,23 @@ local matchStartedAt = 0 -- 판이 시작된 서버 시각
 local inFinal = false -- 마지막 배가 끝나 최종 결과를 보여 주는 중
 local finalRanking: { ScoreRules.Rank } = {} -- 마지막 배가 끝난 순간의 순위. 그 뒤에 들어온 사람은 없다(S24)
 local leftTotals: { [number]: number } = {} -- 이번 판에서 나간 사람의 계정 번호 → 나가기 전 총점(GP-20)
+local shipSizes: { string } = {} -- 이번 판 배들의 크기, 들어오는 순서대로(S28). 서버만 안다
+local random = Random.new()
+
+-- SHIP_SIZE_MIX대로 한 판의 크기를 정하고 순서를 섞는다(GP-18, VR-2)
+local function drawShipSizes(): { string }
+	local sizes: { string } = {}
+	for _, size in { Types.ShipSize.Small, Types.ShipSize.Normal, Types.ShipSize.Large } do
+		for _ = 1, Config.SHIP_SIZE_MIX[size] or 0 do
+			table.insert(sizes, size)
+		end
+	end
+	for index = #sizes, 2, -1 do
+		local other = random:NextInteger(1, index)
+		sizes[index], sizes[other] = sizes[other], sizes[index]
+	end
+	return sizes
+end
 
 local function now(): number
 	return workspace:GetServerTimeNow()
@@ -70,6 +88,7 @@ function MatchService.beginMatch()
 	matchStartedAt = now()
 	inFinal = false
 	finalRanking = {}
+	shipSizes = drawShipSizes()
 	table.clear(leftTotals)
 	for _, player in ParticipantService.players() do
 		local record = ParticipantService.recordOf(player)
@@ -84,6 +103,11 @@ end
 
 function MatchService.matchIndex(): number
 	return matchIndex
+end
+
+-- 이번 판 몇 번째 배의 크기. 그 배가 들어올 때 RoundService가 묻는다. 구성에 없는 번호면 보통 배다
+function MatchService.shipSize(boatIndex: number): string
+	return shipSizes[boatIndex] or Types.ShipSize.Normal
 end
 
 -- 이번 판의 마지막 배인지(FL-7)

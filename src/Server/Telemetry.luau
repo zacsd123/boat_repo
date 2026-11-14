@@ -33,6 +33,7 @@ local COLUMNS = {
 	"match", -- 판 번호(S23). 판이 끝나면 "MATCH,판 번호,판의 길이(초)" 한 줄이 따로 찍힌다
 	"botStuck", -- 봇이 끼어서 옮겨진 횟수(S25)
 	"botHugTries", "botHugSuccess", "botReclaims", -- 끌어안기와 되찾기 가운데 봇이 한 것(S27). 사람의 것은 전체에서 뺀다
+	"shipSize", -- 배 크기(S28)
 }
 
 type PersonLog = { crates: number, still: number, falls: number, lost: number }
@@ -40,6 +41,7 @@ type Round = {
 	startedAt: number,
 	match: number,
 	boat: number,
+	size: string,
 	p: number,
 	humans: number,
 	bots: number,
@@ -65,14 +67,18 @@ type Round = {
 	botHugTries: number,
 	botHugSuccess: number,
 	botReclaims: number,
+	stacked: boolean,
 }
 type Row = {
+	p: number,
 	length: number,
 	firstBellAt: number?,
 	cap: boolean,
 	sank: boolean,
 	oneMore: number,
-	still: { number },
+	still: { number }, -- 사람마다 첫 종 뒤 가만히 서 있던 시간(봇은 뺀다)
+	stacked: boolean, -- 2층이 생겼는지
+	lost: { [number]: number }, -- 슬롯 → 버려진 점수
 }
 
 local current: Round? = nil
@@ -107,13 +113,14 @@ local function fmt(value: number?): string
 end
 
 -- Loading에 들어갈 때. 숨은 한계와 간격은 서버 안에서만 넘어온다
-function Telemetry.beginRound(info: { match: number, boat: number, p: number, lo: number, hi: number, limit: number, gap1: number, gap2: number })
+function Telemetry.beginRound(info: { match: number, boat: number, size: string, p: number, lo: number, hi: number, limit: number, gap1: number, gap2: number })
 	local humans = ParticipantService.humanCount()
 	local bots = #ParticipantService.players() - humans
 	current = {
 		startedAt = now(),
 		match = info.match,
 		boat = info.boat,
+		size = info.size,
 		p = info.p,
 		humans = humans,
 		bots = bots,
@@ -121,6 +128,7 @@ function Telemetry.beginRound(info: { match: number, boat: number, p: number, lo
 		botHugTries = 0,
 		botHugSuccess = 0,
 		botReclaims = 0,
+		stacked = false,
 		lo = info.lo,
 		hi = info.hi,
 		limit = info.limit,
@@ -194,6 +202,14 @@ function Telemetry.hugStarted(byBot: boolean?)
 		if byBot then
 			round.botHugTries += 1
 		end
+	end
+end
+
+-- 화물칸에 2층이 생겼다(S29). 묻어서 지키는 플레이가 나오는지 볼 때 쓴다
+function Telemetry.stacked()
+	local round = current
+	if round then
+		round.stacked = true
 	end
 end
 
@@ -318,6 +334,53 @@ local function summaryText(): { string }
 	}
 end
 
+-- 인원(P)별 요약(S29): 침몰 비율, "하나 더"의 수, 첫 종 뒤 가만히 서 있던 시간, 2층이 생긴 척의 수, 버려진 점수.
+-- 인원마다 한계 범위가 따로라서 인원별로 갈라 본다
+local function summaryByP(): { string }
+	local groups: { [number]: { Row } } = {}
+	local ps: { number } = {}
+	for _, row in rows do
+		if groups[row.p] == nil then
+			groups[row.p] = {}
+			table.insert(ps, row.p)
+		end
+		table.insert(groups[row.p], row)
+	end
+	table.sort(ps)
+	local lines = {}
+	for _, p in ps do
+		local group = groups[p]
+		local sank, oneMore, stacked, length = 0, 0, 0, 0
+		local stillSum, stillCount = 0, 0
+		local lostBySlot: { [number]: number } = {}
+		local lostTotal, lostMost, lostMostSlot = 0, 0, 0
+		for _, row in group do
+			if row.sank then sank += 1 end
+			if row.stacked then stacked += 1 end
+			oneMore += row.oneMore
+			length += row.length
+			for _, still in row.still do
+				stillSum += still
+				stillCount += 1
+			end
+			for slot, points in row.lost do
+				lostBySlot[slot] = (lostBySlot[slot] or 0) + points
+				lostTotal += points
+			end
+		end
+		for slot, points in lostBySlot do
+			if points > lostMost then
+				lostMost, lostMostSlot = points, slot
+			end
+		end
+		local count = #group
+		table.insert(lines, `P={p}: 배 {count}척, 침몰 {string.format("%.0f", sank / count * 100)}%, 하나 더 {fmt(oneMore / count)}개/척, `
+			.. `라운드 {fmt(length / count)}초, 가만히 선 시간 {fmt(if stillCount > 0 then stillSum / stillCount else 0)}초, 2층 {stacked}척, `
+			.. `버려진 점수 {lostTotal}{if lostTotal > 0 then `(가장 많이 당한 슬롯 {lostMostSlot}: {lostMost})` else ""}`)
+	end
+	return lines
+end
+
 local function sendSummary()
 	local lines = summaryText()
 	for _, player in Players:GetPlayers() do
@@ -336,6 +399,7 @@ function Telemetry.endRound(result: string, sinkerSlot: number?, weight: number,
 	current = nil
 	local endAt = now() - round.startedAt
 	local people = {}
+	local lost: { [number]: number } = {}
 	local totals = {}
 	local stills = {}
 	local slots = {}
@@ -348,7 +412,13 @@ function Telemetry.endRound(result: string, sinkerSlot: number?, weight: number,
 		local record = ReplicatedStorage:FindFirstChild("Participants") and ReplicatedStorage.Participants:FindFirstChild(tostring(slot))
 		local score = record and record:GetAttribute("BoatScore") or 0
 		table.insert(people, `{slot}:{score}:{log.crates}:{fmt(log.still)}:{log.falls}:{log.lost}`)
-		table.insert(stills, log.still)
+		-- 봇은 가만히 선 시간을 재지 않는다. 0을 넣으면 사람의 평균이 흐려진다
+		if not (record and record:GetAttribute("IsBot") == true) then
+			table.insert(stills, log.still)
+		end
+		if log.lost > 0 then
+			lost[slot] = log.lost
+		end
 		-- 총점은 이 배의 점수를 더한 뒤의 값이다(MatchService가 먼저 더한다). 나간 사람은 기록이 없어 빠진다
 		if record then
 			table.insert(totals, `{slot}:{record:GetAttribute("TotalScore") or 0}`)
@@ -375,15 +445,19 @@ function Telemetry.endRound(result: string, sinkerSlot: number?, weight: number,
 		tostring(round.match),
 		tostring(round.botStuck),
 		tostring(round.botHugTries), tostring(round.botHugSuccess), tostring(round.botReclaims),
+		round.size,
 	}
 	print("TELEMETRY," .. table.concat(values, ","))
 	table.insert(rows, {
+		p = round.p,
 		length = endAt,
 		firstBellAt = round.firstBellAt,
 		cap = round.firstBellCause == "cap",
 		sank = result == "sank",
 		oneMore = oneMoreTotal,
 		still = stills,
+		stacked = round.stacked,
+		lost = lost,
 	})
 	sendSummary()
 end
@@ -402,6 +476,10 @@ end
 
 function Telemetry.summary(): { string }
 	return summaryText()
+end
+
+function Telemetry.summaryByP(): { string }
+	return summaryByP()
 end
 
 function Telemetry.start()

@@ -33,6 +33,7 @@ local endingListeners: { (sank: boolean) -> () } = {}
 local beforeLoadingListeners: { () -> () } = {}
 local sinkerSlot: number? = nil -- 이번 배를 가라앉힌 참가자(S11에서 점수에 쓴다)
 local sank = false -- 이번 배가 가라앉았는지. 마지막 배는 단계 이름(FinalShow)으로 가를 수 없어서 따로 적는다
+local shipSize: string = Types.ShipSize.Normal -- 지금 배의 크기(S28)
 
 -- 시간으로 끝나는 단계의 길이와 다음 단계
 local DURATION: { [string]: number } = {
@@ -82,7 +83,12 @@ local function arrive(duration: number)
 	sank = false
 	boat:SetAttribute("BoatIndex", boatIndex)
 	boat:SetAttribute("BellCount", 0)
-	BoatService.sailIn(duration)
+	-- 배의 크기는 들어올 때 드러난다(VR-2). 클라이언트는 지금 배의 크기만 안다
+	shipSize = DevTools.forcedSize() or MatchService.shipSize(boatIndex)
+	boat:SetAttribute("ShipSize", shipSize)
+	-- 인원은 Loading에서 센다. 들어오는 동안에는 어림한 인원으로 선체의 높이를 그린다
+	local estimate = math.max(#ParticipantService.players(), Config.BOT_FILL_TO)
+	BoatService.sailIn(duration, shipSize, DevTools.forcedP() or estimate)
 end
 
 -- 배가 끝난 순간(출항 또는 침몰). 점수를 굳히고, 굳힌 직후에 총점에 더하고, 기록을 남기고, 연출을 시작한다.
@@ -127,14 +133,15 @@ local function onEnter(newPhase: string)
 		end
 		local counted = ParticipantService.beginRound()
 		local p = DevTools.forcedP() or counted
-		BoatService.startRound(p)
+		BoatService.startRound(p, shipSize)
 		ScoreService.startRound()
-		BellService.startRound(phaseStartedAt, `배 {boatIndex}`)
+		BellService.startRound(phaseStartedAt, `배 {boatIndex}({shipSize})`, Config.FIRST_BELL_CAP[shipSize])
 		local gap1, gap2 = BellService.currentGaps()
-		local lo, hi = Config.limitRange(p)
+		local lo, hi = Config.limitRange(p, shipSize)
 		Telemetry.beginRound({
 			match = MatchService.matchIndex(),
 			boat = boatIndex,
+			size = shipSize,
 			p = p,
 			lo = lo,
 			hi = hi,
