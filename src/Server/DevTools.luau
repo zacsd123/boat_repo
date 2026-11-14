@@ -97,6 +97,13 @@ function DevTools.setTotal(slot: number, total: number): boolean
 	return true
 end
 
+-- 봇마다 지금 무엇을 하려는지(S25, S27)
+function DevTools.bots(): string
+	if not RunService:IsStudio() then return "" end
+	local BotService = require(script.Parent.BotService) :: any
+	return table.concat(BotService.describe(), "\n")
+end
+
 -- 지금 그 계정이 들어온다면 받을 시작 총점(S24). 실제로 들어올 때와 같은 함수에 묻는다
 function DevTools.startTotalFor(userId: number): number
 	if not RunService:IsStudio() then return -1 end
