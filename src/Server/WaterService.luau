@@ -120,7 +120,12 @@ local function step()
 		end
 		local state = ParticipantService.stateOf(player)
 		-- 갑판 위는 물이 아니다(GP-11). 무게가 위 끝에 가까우면 갑판 바닥이 수면보다 낮아지기 때문이다
-		local wet = inside(waterZone, feet(rootPart, humanoid)) and not BoatService.isOnDeck(rootPart.Position)
+		-- 배다리 위도 물이 아니다. 무게가 위 끝에 가까우면 배다리의 배 쪽 끝이 수면 아래로 내려가는데,
+		-- 그 위를 걸어 싣는 사람이 물에 빠져 상자를 놓치면 띠 안에서 "하나 더"를 실을 수 없다(S27에서 찾아 고침)
+		local soles = feet(rootPart, humanoid)
+		local wet = inside(waterZone, soles)
+			and not BoatService.isOnDeck(rootPart.Position)
+			and not BoatService.isOnGangway(soles)
 		if state ~= State.InWater and state ~= State.Hugging and wet then
 			enterWater(player, rootPart.Position)
 		elseif state == State.InWater then

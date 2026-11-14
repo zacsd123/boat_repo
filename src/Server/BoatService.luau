@@ -292,6 +292,20 @@ function BoatService.isOnDeck(point: Vector3): boolean
 	return math.abs(localPoint.X) <= half.X and math.abs(localPoint.Y) <= half.Y and math.abs(localPoint.Z) <= half.Z
 end
 
+-- 점이 배다리 위인지. 배가 깊이 잠기면 배다리의 배 쪽 끝이 수면 아래로 내려간다.
+-- 그 위를 걷는 사람을 물에 빠진 것으로 치지 않으려고 WaterService가 묻는다(놓기의 "갑판"과는 상관없다, GP-11)
+function BoatService.isOnGangway(point: Vector3): boolean
+	if not gangwayShown then
+		return false
+	end
+	local localPoint = gangway.CFrame:PointToObjectSpace(point)
+	local half = gangway.Size / 2
+	-- 윗면 둘레만 본다. 배다리 밑을 헤엄쳐 지나는 사람은 아니다(바다 바닥은 배다리보다 2스터드 넘게 아래다).
+	-- 아래로 1스터드의 여유를 둔다: 가파른 배다리를 빠르게 오를 때는 몸이 잠깐 낮게 따라온다
+	return math.abs(localPoint.X) <= half.X and math.abs(localPoint.Z) <= half.Z + 0.5
+		and localPoint.Y >= -1 and localPoint.Y <= half.Y + 1
+end
+
 -- 선착장 머리 윗면 가운데. 출항 때 갑판 위 사람을 내려 주는 자리(GP-6)
 function BoatService.dockHeadTop(): CFrame
 	return dockHead.CFrame * CFrame.new(0, dockHead.Size.Y / 2, 0)
